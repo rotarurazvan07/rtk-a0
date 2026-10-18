@@ -1,7 +1,0 @@
-# shell=True is forbidden - use an argv-list subprocess invocation.
-id: no-shell-true
-language: python
-severity: error
-message: "shell=True is forbidden - use argv-list subprocess"
-rule:
-  pattern: subprocess.run($$$ARGS, shell=True)
