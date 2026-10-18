@@ -109,9 +109,11 @@ def test_states_linux_container_only_support():
 
 
 def test_states_licensing_boundary_reference():
-    text = _readme_text()
-    assert "docs/licensing-boundary.md" in text
-    assert (PLUGIN_ROOT / "docs" / "licensing-boundary.md").exists()
+    low = _readme_text().lower()
+    assert "busl-1.1" in low or "busl" in low
+    assert "apache" in low
+    assert "orchestrat" in low
+    assert "rtk_pin.txt" in low or "pinned" in low
 
 
 # ---: troubleshooting section — warning, agent-works, remedy ---

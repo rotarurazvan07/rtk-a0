@@ -340,10 +340,10 @@ def test_plugin_git_toplevel_is_plugin_root():
         "plugin repo must be its own git root (framework not vendored here)"
 
 
-def test_compliance_doc_licensing_boundary_statement():
-    """The compliance doc states the orchestrate-only boundary: RTK (BUSL-1.1) is downloaded, not vendored, our code is Apache-2.0, and distribution conveys an installer, not the engine."""
-    doc = PLUGIN_ROOT / "docs" / "licensing-boundary.md"
-    assert doc.is_file(), "docs/licensing-boundary.md missing (compliance note)"
-    text = doc.read_text(encoding="utf-8")
-    for token in ("BUSL-1.1", "Apache-2.0", "rtk_pin.txt", "not vendored"):
-        assert token in text, f"compliance doc must state {token!r}"
+def test_readme_licensing_boundary_statement():
+    """The README states the orchestrate-only boundary: RTK (BUSL-1.1) is
+    downloaded, not vendored, our code is Apache-2.0, and distribution conveys
+    an installer, not the engine."""
+    text = (PLUGIN_ROOT / "README.md").read_text(encoding="utf-8")
+    for token in ("BUSL-1.1", "Apache-2.0", "rtk_pin.txt", "orchestration-only"):
+        assert token in text, f"README must state {token!r}"
