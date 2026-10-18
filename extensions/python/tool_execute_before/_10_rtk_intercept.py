@@ -6,31 +6,19 @@ from helpers.extension import Extension
 # Single module constant, never an inline literal.
 RTK_REWRITE_TIMEOUT = 2.0
 
-# Session latch key for the one-time unavailability warning.
+# Latches live on the per-session agent data dict, not module state.
 RTK_MISSING_WARNED = "rtk_a0_missing_warned"
-
-# Session latch key for the one-time gain-visibility notice (emitted at the
-# first applied rewrite, advisory only).
 RTK_GAIN_HINTED = "rtk_a0_gain_hinted"
 
 
 class RtkIntercept(Extension):
-    """tool_execute_before extension: terminal-command gating + rtk rewrite
-    delegation + full fail-open guard contract with the rc-0/3
-    rewrite-available amendment and the one-time `rtk gain` visibility
-    notice.
+    """Terminal-command gating, rtk rewrite delegation, and fail-open guards.
 
-    Guard clauses, the delegation call with its single mutation point, the
-    availability guard with warn-once notification, the rc-0/3 acceptance
-    amendment, and the gain hint at the mutation point. `rtk gain` itself is
-    never invoked by this plugin: savings accounting belongs to the RTK
-    CLI.
-
+    `rtk gain` is never invoked by this plugin: savings accounting belongs to
+    the RTK CLI.
     """
 
     def execute(self, tool_name: str = "", tool_args: dict | None = None, **kwargs) -> None:
-        """Guard clauses in order, the guarded delegation call, then the
-        result gates."""
         # Only code_execution_tool is eligible; exact equality, no
         # prefix/fuzzy matching on tool names.
         if tool_name != "code_execution_tool":
@@ -77,12 +65,9 @@ class RtkIntercept(Extension):
                 encoding="utf-8",
                 timeout=RTK_REWRITE_TIMEOUT,
             )
-        except subprocess.TimeoutExpired:
-            # A hung binary stalls at most one command; the original runs
-            # unchanged.
-            return
         except Exception:
-            # OSError (e.g. oversized argv) and anything else: the original
+            # TimeoutExpired (a hung binary stalls at most one command) and
+            # every spawn fault (OSError, e.g. oversized argv): the original
             # command runs unchanged, no crash.
             return
 
@@ -114,38 +99,38 @@ class RtkIntercept(Extension):
         # produced a different, non-empty command.
         tool_args["code"] = rewritten
 
-    def _warn_unavailable(self) -> None:
-        """Surface the one-time 'compression inactive' notice through the
-        agent's own log surface. Guarded: a broken log can never break the
-        agent."""
+    def _notify(self, kind: str, heading: str, content: str) -> None:
+        """One operator notice on the agent log surface; best-effort - a
+        broken surface can never break the agent (the action each notice
+        announces has already completed or already failed open)."""
         try:
-            self.agent.context.log.log(
-                type="warning",
-                heading="rtk unavailable — running uncompressed",
-                content=(
-                    "The rtk binary was not found on PATH, so terminal commands \
- run without compression. Install rtk (or re-run plugin setup) to reactivate; \
- commands continue to work normally either way."
-                ),
-            )
+            self.agent.context.log.log(type=kind, heading=heading, content=content)
         except Exception:
-            pass  # notification is best-effort; the skip already failed open
+            pass
+
+    def _warn_unavailable(self) -> None:
+        """One-time 'compression inactive' notice after the latched miss."""
+        self._notify(
+            "warning",
+            "rtk unavailable — running uncompressed",
+            (
+                "The rtk binary was not found on PATH, so terminal commands "
+                "run without compression. Install rtk (or re-run plugin setup) "
+                "to reactivate; commands continue to work normally either way."
+            ),
+        )
 
     def _hint_gain(self) -> None:
-        """One-time advisory notice pointing the user at the rtk CLI's own
-        savings report (`rtk gain`) at the first applied rewrite.
-        Discoverability only: the plugin never invokes `rtk gain` itself.
-        Uses the agent log surface, is latch-guarded by the caller, and is
-        broken-surface safe (a failing log can never break the agent)."""
-        try:
-            self.agent.context.log.log(
-                type="info",
-                heading="rtk compression active — view savings with `rtk gain`",
-                content=(
-                    "Terminal commands are now compressed by rtk. Ask me to run \
- `rtk gain` to see per-command and per-session token savings as tracked by the \
- rtk CLI itself; it runs like any other command and needs no plugin settings."
-                ),
-            )
-        except Exception:
-            pass  # notification is best-effort; the rewrite already applies
+        """One-time advisory pointing the user at the rtk CLI's own savings
+        report (`rtk gain`) at the first applied rewrite. Discoverability
+        only: the plugin never invokes `rtk gain` itself."""
+        self._notify(
+            "info",
+            "rtk compression active — view savings with `rtk gain`",
+            (
+                "Terminal commands are now compressed by rtk. Ask me to run "
+                "`rtk gain` to see per-command and per-session token savings "
+                "as tracked by the rtk CLI itself; it runs like any other "
+                "command and needs no plugin settings."
+            ),
+        )

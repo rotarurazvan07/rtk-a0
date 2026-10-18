@@ -21,10 +21,14 @@ from pathlib import Path
 _PLUGIN_DIR = Path(__file__).resolve().parent
 # Provisioning lives in scripts/setup.sh; hooks only wire it.
 _SETUP_SCRIPT = _PLUGIN_DIR / "scripts" / "setup.sh"
-# Container OS bin dir - never the framework venv.
+# Container OS bin dir - never the framework venv. Overridable via
+# RTK_INSTALL_DIR (the same knob setup.sh honors); the fallback keeps the
+# lifecycle PATH-append and the uninstall message working by default.
 INSTALL_DIR = "/usr/local/bin"
 # Pin is single-source in rtk_pin.txt; hooks never read versions.
 _SETUP_TIMEOUT = 120  # seconds; download+verify+install worst case on slow links
+# Version probe is trivially fast (a --version print); 10s is generous.
+_VERSION_TIMEOUT = 10
 # Concurrent lifecycle callers share the setup.sh fixed staging path -
 # serialize in-process callers. The update path calls pre_update then
 # install sequentially.
@@ -35,7 +39,7 @@ class _Style:
     """Minimal operator-visible logging (stderr; A0 surfaces hook output)."""
 
     @staticmethod
-    def _emit(level, *args):
+    def _emit(level: str, *args) -> None:
         try:
             print("rtk hooks: " + level + ": " + " ".join(str(a) for a in args), file=sys.stderr)
         except Exception:
@@ -43,28 +47,20 @@ class _Style:
             # writer failure so logging can never break a hook.
             pass
 
-    def info(self, *args, **kwargs):
+    def info(self, *args) -> None:
         self._emit("INFO", *args)
 
-    def warning(self, *args, **kwargs):
+    def warning(self, *args) -> None:
         self._emit("WARNING", *args)
 
-    def error(self, *args, **kwargs):
+    def error(self, *args) -> None:
         self._emit("ERROR", *args)
 
 
 _style = _Style()
 
 
-def _warn(msg):
-    """Warning that cannot itself fail the hook."""
-    try:
-        _style.warning(msg)
-    except Exception:
-        pass
-
-
-def _desc(exc):
+def _desc(exc: BaseException) -> str:
     """Fault-proof exception text: an exception whose __str__ raises must
     not turn a handled degradation into an escape."""
     try:
@@ -76,26 +72,29 @@ def _desc(exc):
             return "<unprintable exception>"
 
 
-def _info(msg):
-    """Status line that cannot abort the action it announces."""
-    try:
-        _style.info(msg)
-    except Exception:
-        pass
+def _install_dir() -> str:
+    """Effective install dir: RTK_INSTALL_DIR when set, else the default.
 
-def _setup_env():
-    """Environment for setup.sh; guarantees INSTALL_DIR on PATH.
+    setup.sh honors the same override; resolving it here keeps the lifecycle
+    PATH-append and the uninstall message in sync with the script.
+    """
+    return os.environ.get("RTK_INSTALL_DIR") or INSTALL_DIR
+
+
+def _setup_env() -> dict[str, str]:
+    """Environment for setup.sh; guarantees the install dir on PATH.
 
     The setup self-check resolves rtk through PATH; if the
-    lifecycle process PATH lacks /usr/local/bin the check would fail after a
-    successful install. Append the pinned install dir when absent; never
-    duplicate an existing entry.
+    lifecycle process PATH lacks the install dir the check would fail after a
+    successful install. Append the dir when absent; never duplicate an
+    existing entry.
     """
     env = dict(os.environ)
     path = env.get("PATH", os.defpath)
     parts = path.split(os.pathsep) if path else []
-    if INSTALL_DIR not in parts:
-        parts.append(INSTALL_DIR)
+    install_dir = _install_dir()
+    if install_dir not in parts:
+        parts.append(install_dir)
     env["PATH"] = os.pathsep.join(parts)
     return env
 
@@ -117,14 +116,68 @@ def _run_setup():
         )
 
 
-def _surface(result):
+def _setup_output(result) -> str:
     """Combine setup output so the operator sees the provisioning verdict."""
     out = (result.stdout or "").strip()
     err = (result.stderr or "").strip()
     return " | ".join(part for part in (out, err) if part)
 
 
-def install():
+def _tail(output: str) -> str:
+    """Suffix with the child output when non-empty."""
+    return (": " + output) if output else ""
+
+
+def _emergency(msg: str) -> None:
+    """Last-resort stderr write used when the logging surface itself fails.
+
+    If _style is broken (e.g. an injected raising sink), this still cannot
+    raise, so no hook can ever escape and no announced action is aborted by
+    its own status line. Bypasses _style deliberately - it is the single
+    place where the swallow must not depend on the injected sink.
+    """
+    try:
+        print("rtk hooks: " + msg, file=sys.stderr)
+    except Exception:
+        pass
+
+
+def _say(level: str, msg: str) -> None:
+    """Operator message that cannot fail or abort the action it announces.
+
+    Primary path is the _style surface (whose _emit swallows internally);
+    if that surface is itself broken, fall back to the guarded stderr write.
+    """
+    try:
+        getattr(_style, level)(msg)
+    except Exception:
+        _emergency(msg)
+
+
+def _report_setup(rc: int, output: str, verb: str) -> None:
+    """Map a setup.sh exit code to the operator message (one taxonomy).
+
+    Mirrors the exit contract documented in scripts/setup.sh: usage (2),
+    availability (126/127/negative), and everything else integrity.
+    """
+    if rc == 0:
+        # Provisioned, idempotent skip, or warned-unavailable.
+        _say("info", "rtk " + verb + " complete" + _tail(output))
+    elif rc == 2:
+        _say("warning", "rtk " + verb + " usage error (rc=2)" + _tail(output))
+    elif rc in (126, 127) or rc < 0:
+        # Missing/non-executable script (126/127) or a signal-killed child
+        # (negative rc) is availability-shaped, not integrity corruption.
+        _say("warning", "rtk " + verb + " could not run (rc=" + str(rc) + ")" + _tail(output))
+    else:
+        _say(
+            "warning",
+            "rtk " + verb + " reported integrity/format failure (rc=" + str(rc) + ") - inspect manually"
+            + _tail(output),
+        )
+
+
+def install() -> None:
     """A0 install hook: provision RTK via scripts/setup.sh, warn-not-fail.
 
     Every outcome (0 provisioned-or-warned, 2 usage, other
@@ -133,53 +186,27 @@ def install():
     """
     try:
         result = _run_setup()
-    except FileNotFoundError as exc:
-        # bash or the setup script itself is unavailable on this host.
-        _style.warning("rtk setup could not run (" + _desc(exc) + "); agent runs uncompressed")
-        return
     except subprocess.TimeoutExpired:
-        _style.warning("rtk setup exceeded " + str(_SETUP_TIMEOUT) + "s; agent runs uncompressed")
-        return
-    except OSError as exc:
-        _style.warning("rtk setup failed (" + _desc(exc) + "); agent runs uncompressed")
+        _say("warning", "rtk setup exceeded " + str(_SETUP_TIMEOUT) + "s; agent runs uncompressed")
         return
     except Exception as exc:
         # Nothing may escape install(): the installer re-raises hook
-        # exceptions, so any unexpected failure degrades to a warning.
-        _style.warning("rtk setup could not run (" + _desc(exc) + "); agent runs uncompressed")
+        # exceptions, so any failure (missing bash/script, spawn fault, or
+        # unexpected error) degrades to a warning.
+        _say("warning", "rtk setup could not run (" + _desc(exc) + "); agent runs uncompressed")
         return
-
-    rc = result.returncode
-    output = _surface(result)
-    if rc == 0:
-        # Provisioned, idempotent skip, or warned-unavailable.
-        _style.info("rtk setup complete" + ((": " + output) if output else ""))
-        return
-    if rc == 2:
-        _style.warning("rtk setup usage error (rc=2)" + ((": " + output) if output else ""))
-        return
-    if rc in (126, 127) or rc < 0:
-        # Missing/non-executable script (126/127) or a signal-killed child
-        # (negative rc) is availability-shaped, not integrity corruption.
-        _style.warning("rtk setup could not run (rc=" + str(rc) + ")" + ((": " + output) if output else ""))
-        return
-    _style.warning(
-        "rtk setup reported integrity/format failure (rc=" + str(rc) + ") - inspect manually"
-        + ((": " + output) if output else "")
-    )
+    _report_setup(result.returncode, _setup_output(result), "setup")
 
 
-# Version probe is trivially fast (a --version print); 10s is generous.
-_VERSION_TIMEOUT = 10
-
-
-def _installed_version():
-    """Return the installed rtk version token, or None when unavailable.
+def _installed_version() -> str | None:
+    """Probe the installed rtk version token; raises when rtk is unusable.
 
     Probes via argv list (never shell mode) with the same PATH the setup
-    self-check uses (INSTALL_DIR appended); explicit utf-8 decoding keeps a
-    non-ASCII byte from raising. Real output is ``rtk 1.0.1`` (no v-prefix);
-    the version is the last whitespace token of the last non-empty line.
+    self-check uses (install dir appended); explicit utf-8 decoding keeps a
+    non-ASCII byte from raising a decode error. Real output is ``rtk 1.0.1``
+    (no v-prefix); the version is the last whitespace token of the last
+    non-empty line. Raises on absent binary / spawn fault / timeout; returns
+    None only for empty output.
     """
     result = subprocess.run(
         ["rtk", "--version"],
@@ -199,13 +226,14 @@ def _installed_version():
     return token or None
 
 
-def _pin_version():
-    """Read the pin file (rtk_pin.txt); v-prefix stripped."""
+def _pin_version() -> str:
+    """Read the pin file (rtk_pin.txt); v-prefix stripped. Raises when the
+    file is missing or unreadable (plugin damage, not a version match)."""
     raw = (_PLUGIN_DIR / "rtk_pin.txt").read_text(encoding="utf-8").strip()
     return raw[1:] if raw.startswith("v") else raw
 
 
-def pre_update():
+def pre_update() -> None:
     """A0 pre_update hook: re-provision only on version drift.
 
     Installed rtk --version vs rtk_pin.txt, token-exact: equal -> keep the
@@ -215,7 +243,7 @@ def pre_update():
     exceptions and the installer re-raises them.
     """
     # The outer guard is fault-proof: every inner handler builds its message
-    # via _desc() and _warn(), so nothing can escape this hook.
+    # via _desc(), so nothing can escape this hook.
     try:
         try:
             installed = _installed_version()
@@ -223,51 +251,35 @@ def pre_update():
             # Any probe failure (absent binary, OSError, timeout, or a
             # ValueError/TypeError-family fault) is unreadable = drift.
             installed = None
-            _warn("rtk version probe failed (" + _desc(exc) + "); re-checking via setup")
+            _say("warning", "rtk version probe failed (" + _desc(exc) + "); re-checking via setup")
         try:
             pin = _pin_version()
         except Exception as exc:
             # An unreadable pin is plugin damage, not a version match; warn
             # distinctly and still attempt re-provisioning.
             pin = None
-            _warn("rtk pin unreadable (" + _desc(exc) + "); re-checking via setup")
+            _say("warning", "rtk pin unreadable (" + _desc(exc) + "); re-checking via setup")
         if installed is not None and pin is not None and installed == pin:
-            _info("rtk " + installed + " matches pin; update leaves binary untouched")
+            _say("info", "rtk " + installed + " matches pin; update leaves binary untouched")
             return
         if installed is None:
-            _info("rtk binary unavailable or unreadable; running setup to re-provision")
+            _say("info", "rtk binary unavailable or unreadable; running setup to re-provision")
         elif pin is None:
-            _info("rtk pin unreadable; running setup to re-provision")
+            _say("info", "rtk pin unreadable; running setup to re-provision")
         else:
-            _info("rtk " + installed + " != pin " + pin + "; running setup to re-provision")
+            _say("info", "rtk " + installed + " != pin " + pin + "; running setup to re-provision")
         try:
             result = _run_setup()
         except Exception as exc:
             # A failing re-provision must not fail the update lifecycle.
-            _warn("rtk re-provisioning failed (" + _desc(exc) + "); agent runs as-is")
+            _say("warning", "rtk re-provisioning failed (" + _desc(exc) + "); agent runs as-is")
             return
-        rc = result.returncode
-        output = _surface(result)
-        if rc == 0:
-            # Provisioned, idempotent skip, or warned-unavailable.
-            _info("rtk re-provision complete" + ((": " + output) if output else ""))
-            return
-        # Exit-class parity with install(): usage, availability, and
-        # integrity failures surface distinctly.
-        if rc == 2:
-            _warn("rtk re-provision usage error (rc=2)" + ((": " + output) if output else ""))
-        elif rc in (126, 127) or rc < 0:
-            _warn("rtk re-provision could not run (rc=" + str(rc) + ")" + ((": " + output) if output else ""))
-        else:
-            _warn(
-                "rtk re-provision reported integrity/format failure (rc=" + str(rc) + ") - inspect manually"
-                + ((": " + output) if output else "")
-            )
+        _report_setup(result.returncode, _setup_output(result), "re-provision")
     except Exception as exc:
-        _warn("rtk pre_update degraded (" + _desc(exc) + "); update continues")
+        _say("warning", "rtk pre_update degraded (" + _desc(exc) + "); update continues")
 
 
-def uninstall():
+def uninstall() -> None:
     """A0 uninstall hook: never touches the user-owned RTK binary.
 
     A0 deletes the plugin directory itself after this hook returns:
@@ -277,9 +289,10 @@ def uninstall():
     is a guarded, informative no-op - it removes nothing and never raises.
     """
     try:
-        _style.info(
+        _say(
+            "info",
             "rtk uninstall: plugin files removed by A0; user-owned rtk left at "
-            + INSTALL_DIR + "/rtk"
+            + _install_dir() + "/rtk",
         )
     except Exception as exc:
-        _warn("rtk uninstall degraded (" + _desc(exc) + ")")
+        _say("warning", "rtk uninstall degraded (" + _desc(exc) + ")")

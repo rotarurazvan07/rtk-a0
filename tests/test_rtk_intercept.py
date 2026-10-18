@@ -564,8 +564,12 @@ def test_guard_contract_source_structure():
     assert "rtk_a0_missing_warned" in src
     assert src.count('RTK_MISSING_WARNED] =') == 1, "flag written at exactly one place"
     assert 'RTK_MISSING_WARNED = "rtk_a0_missing_warned"' in src, "warn-once key pinned once"
-    assert "except subprocess.TimeoutExpired" in src, "explicit timeout branch required"
-    assert src.index("except subprocess.TimeoutExpired") < src.index("except Exception")
+    assert "except Exception" in src, "single guarded handler required"
+    # timeout is handled by the same catch-all (TimeoutExpired subclasses
+    # Exception); the handler comment must name both fault classes so the
+    # merge stays intentional rather than accidental.
+    handler = src[src.index("except Exception"):]
+    assert "TimeoutExpired" in handler[:400], "handler must name the timeout class"
     assert "encoding=\"utf-8\"" in src, "explicit utf-8 codec required (locale-safe)"
     # ordering: idempotence gate -> availability -> guarded call
     assert src.index("shutil.which") < src.index("subprocess.run"), "availability precedes delegation"
@@ -1186,7 +1190,7 @@ def test_no_plugin_owned_savings_persistence():
         if candidate.suffix != ".json" and "stats" not in candidate.name and "state" not in candidate.name:
             continue
         parts = candidate.relative_to(PLUGIN_ROOT).parts
-        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git")):
+        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", ".desloppify", ".neuralmind")):
             continue
         owned.append(str(candidate))
     assert not owned, f"plugin-owned persistence surface exists: {owned}"
@@ -1200,7 +1204,7 @@ def test_no_plugin_owned_savings_persistence():
         if "gain" not in name and "saving" not in name and "stats" not in name:
             continue
         parts = candidate.relative_to(PLUGIN_ROOT).parts
-        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", "docs", "node_modules")):
+        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", "docs", "node_modules", ".desloppify", ".neuralmind")):
             continue
         ledger.append(str(candidate))
     assert not ledger, f"no plugin-owned gain/savings ledger: {ledger}"

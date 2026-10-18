@@ -8,6 +8,13 @@ binary — it never vendors or reimplements it.
 
 ## Install
 
+**Prerequisites** — a Linux container with these standard tools already
+present: `bash`, `curl`, `tar`, `sha256sum`, `awk`, `find`, `mktemp`. The
+plugin targets x86_64 Linux only; the provisioned binary is a static musl
+build, so no further runtime libraries are needed. A missing tool surfaces
+as a one-line setup warning and the agent keeps working uncompressed — the
+commands themselves continue to run either way.
+
 **Plugin Hub** — search for **rtk** in Agent Zero's Plugin Hub and install.
 The plugin is default-on (no settings to toggle).
 

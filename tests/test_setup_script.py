@@ -40,8 +40,16 @@ def _code_source() -> str:
 
 
 
+# Host-state isolation (CR-2.4-D1): a minimal controlled base PATH keeps the
+# suite deterministic on hosts that have a real rtk on PATH - inherited PATH
+# let host binaries shadow the stubs, making download/verify branches
+# unreachable (12 failures on rtk-equipped containers).
+_CONTROLLED_PATH = "/usr/bin:/bin"
+
+
 def _plan_env(root: Path) -> dict:
     env = dict(os.environ)
+    env["PATH"] = _CONTROLLED_PATH
     env["RTK_PROJECT_ROOT"] = str(root)
     return env
 
@@ -92,7 +100,7 @@ def _curl_stub(tmp_path: Path, argv_log: Path) -> Path:
 
 def _which_patched_env(bin_dir: Path, staging: Path, argv_log: Path) -> dict:
     env = dict(os.environ)
-    env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+    env["PATH"] = f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}"
     env["RTK_STAGING_DIR"] = str(staging)
     env["RTK_ARGV_LOG"] = str(argv_log)
     return env
@@ -534,7 +542,7 @@ def _run_full(tmp_path, nested=False, version_text=None, corrupt_checksum=False,
     if version_text is not None:
         _rtk_stub(bin_dir, version_text)
     env = _setup_env(repo, tmp_path / "staging", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
         "RTK_VERSION_LOG": str(version_log),
         "RTK_STUB_ASSETS": str(assets),
@@ -624,7 +632,7 @@ def test_second_run_skips_download_when_version_matches(tmp_path):
     existing.chmod(0o755)
     before_stat = existing.stat()
     env = _setup_env(repo, tmp_path / "staging", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
     })
     proc = _run_setup(env)
@@ -645,7 +653,7 @@ def test_malformed_pin_aborts_before_download(tmp_path):
         (repo / "rtk_pin.txt").write_text(bad_pin, encoding="utf-8")
         bin_dir, argv_log = _stub_bin_dir(tmp2)
         env = _setup_env(repo, tmp2 / "staging", tmp2 / "install", extra={
-            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
             "RTK_ARGV_LOG": str(argv_log),
         })
         proc = _run_setup(env)
@@ -684,7 +692,7 @@ def test_staging_symlink_is_rejected(tmp_path):
     install_dir = tmp_path / "install"
     install_dir.mkdir()
     env = _setup_env(repo, link, install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
     })
     proc = _run_setup(env)
@@ -717,7 +725,7 @@ def test_staging_symlink_with_trailing_slash_is_rejected(tmp_path):
     install_dir = tmp_path / "install"
     install_dir.mkdir()
     env = _setup_env(repo, f"{link}/", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
     })
     proc = _run_setup(env)
@@ -737,7 +745,7 @@ def test_pre_planted_staging_target_symlink_is_refused(tmp_path):
     install_dir = tmp_path / "install"
     install_dir.mkdir()
     env = _setup_env(repo, staging, install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
     })
     proc = _run_setup(env)
@@ -754,7 +762,7 @@ def test_idempotency_gate_exact_token_not_substring_family(tmp_path):
     install_dir = tmp_path / "install"
     install_dir.mkdir()
     env = _setup_env(repo, tmp_path / "staging", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
     })
     proc = _run_setup(env)
@@ -793,7 +801,7 @@ def test_multi_rtk_archive_does_not_abort_under_pipefail(tmp_path):
     install_dir = tmp_path / "install"
     install_dir.mkdir()
     env = _setup_env(repo, tmp_path / "staging", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
         "RTK_STUB_ASSETS": str(assets),
         "RTK_VERSION_LOG": str(tmp_path / "v.log"),
@@ -812,7 +820,7 @@ def test_plan_mode_remains_pure_query_when_rtk_installed(tmp_path):
     bin_dir, argv_log = _stub_bin_dir(tmp_path)
     _rtk_stub(bin_dir, f"rtk {pin[1:]}", flip=False)
     env = _plan_env(repo)
-    env["PATH"] = f"{bin_dir}{os.pathsep}{os.environ['PATH']}"
+    env["PATH"] = f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}"
     env["RTK_ARGV_LOG"] = str(argv_log)
     proc = subprocess.run(
         ["bash", str(SETUP), "--print-download-plan"],
@@ -831,7 +839,7 @@ def test_unknown_argument_is_usage_error_not_silent_install(tmp_path):
     install_dir = tmp_path / "install"
     install_dir.mkdir()
     env = _setup_env(repo, tmp_path / "staging", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
     })
     proc = _run_setup(env, args=["--plan"])
@@ -855,7 +863,7 @@ def test_failed_run_cleans_staged_assets(tmp_path):
     install_dir = tmp_path / "install"
     install_dir.mkdir()
     env = _setup_env(repo, staging, install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
         "RTK_VERSION_LOG": str(tmp_path / "rtk-version.log"),
         "RTK_STUB_ASSETS": str(assets),
@@ -929,7 +937,7 @@ def _run_network_failure(tmp_path: Path, rc: int, partial_bytes: int = 0, pin_te
     env = _setup_env(repo, staging, install_dir, extra={
         # prepend (not replace) so bash/coreutils still resolve; the stub
         # dir carries only the failing curl.
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
         "RTK_CURL_RC": str(rc),
         "RTK_CURL_PARTIAL": str(partial_bytes),
@@ -1044,7 +1052,7 @@ def test_classification_separation_network_vs_integrity(tmp_path):
     install_dir = tmp_path / "install2"
     install_dir.mkdir()
     env = _setup_env(repo, tmp_path / "staging2", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
     })
     int_proc = _run_setup(env)
     assert int_proc.returncode != 0, f"integrity class must fail hard: {_combined(int_proc)}"
@@ -1076,7 +1084,7 @@ def test_no_checksums_entry_stays_fail_hard(tmp_path):
     install_dir = tmp_path / "install"
     install_dir.mkdir()
     env = _setup_env(repo, tmp_path / "staging", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
         "RTK_VERSION_LOG": str(tmp_path / "rtk-version.log"),
         "RTK_STUB_ASSETS": str(assets),
@@ -1120,7 +1128,7 @@ def test_install_target_symlink_is_refused(tmp_path):
     pin = PIN_FILE.read_text(encoding="utf-8").strip()
     _rtk_stub(bin_dir, f"rtk {pin[1:]}")
     env = _setup_env(repo, tmp_path / "staging", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
         "RTK_STUB_ASSETS": str(assets),
     })
@@ -1140,7 +1148,7 @@ def test_install_target_directory_is_refused(tmp_path):
     pin = PIN_FILE.read_text(encoding="utf-8").strip()
     _rtk_stub(bin_dir, f"rtk {pin[1:]}")
     env = _setup_env(repo, tmp_path / "staging", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
         "RTK_STUB_ASSETS": str(assets),
     })
@@ -1180,7 +1188,7 @@ def test_install_surface_failure_warns_not_fails(tmp_path):
     pin = PIN_FILE.read_text(encoding="utf-8").strip()
     _rtk_stub(bin_dir, f"rtk {pin[1:]}")
     env = _setup_env(repo, tmp_path / "staging", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
         "RTK_STUB_ASSETS": str(assets),
         "RTK_STUB_MARKER": str(tmp_path / "rtk-flip.marker"),
@@ -1227,7 +1235,7 @@ def test_install_surface_failure_without_pre_existing_removes_partial(tmp_path):
     pin = PIN_FILE.read_text(encoding="utf-8").strip()
     _rtk_stub(bin_dir, f"rtk {pin[1:]}")
     env = _setup_env(repo, tmp_path / "staging", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
         "RTK_STUB_ASSETS": str(assets),
         "RTK_STUB_MARKER": str(tmp_path / "rtk-flip.marker"),
@@ -1254,7 +1262,7 @@ def test_pre_existing_binary_restored_on_self_check_failure(tmp_path):
     # proceeds, self-check fails, rollback must restore the victim.
     _rtk_stub(bin_dir, "rtk 9.9.9-not-installed", flip=False)
     env = _setup_env(repo, tmp_path / "staging", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
         "RTK_STUB_ASSETS": str(assets),
     })
@@ -1301,7 +1309,7 @@ def test_missing_checksums_warns_not_fails(tmp_path):
         encoding="utf-8")
     (bin_dir / "curl").chmod(0o755)
     env = _setup_env(repo, tmp_path / "staging", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
         "RTK_STUB_ASSETS": str(assets),
         "RTK_STUB_MARKER": str(tmp_path / "rtk-flip.marker"),
@@ -1344,7 +1352,7 @@ def test_no_broad_resilience_conversion(tmp_path):
     install_dir = tmp_path / "install"
     install_dir.mkdir()
     env = _setup_env(repo, tmp_path / "staging", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
     })
     proc = _run_setup(env)
     assert proc.returncode != 0, f"malformed pin must stay fail-hard: {_combined(proc)}"
@@ -1375,7 +1383,7 @@ def test_staged_tarball_missing_before_verify_warns(tmp_path):
         encoding="utf-8")
     (bin_dir / "curl").chmod(0o755)
     env = _setup_env(repo, tmp_path / "staging", install_dir, extra={
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{_CONTROLLED_PATH}",
         "RTK_ARGV_LOG": str(argv_log),
         "RTK_STUB_ASSETS": str(assets),
         "RTK_STUB_MARKER": str(tmp_path / "rtk-flip.marker"),

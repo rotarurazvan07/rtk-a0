@@ -17,9 +17,11 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # RTK_PROJECT_ROOT keeps the script CWD-independent and testable; normally
 # it is the plugin root, one level above scripts/.
 PROJECT_ROOT="${RTK_PROJECT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-# Normalize the override the same way the default branch is normalized:
-# relative overrides must not resolve against the caller cwd.
-if [ -n "${RTK_PROJECT_ROOT:-}" ]; then
+# Normalize relative paths to absolute, but only when the directory already
+# exists (one idiom, same as staging): first-run/plan-mode paths may point
+# at not-yet-created dirs where cd would fail under set -e; the default
+# branch is already absolute.
+if [ -d "$PROJECT_ROOT" ]; then
   PROJECT_ROOT="$(cd -P -- "$PROJECT_ROOT" && pwd)"
 fi
 
@@ -114,11 +116,11 @@ mkdir -p "$STAGING_DIR"
 # release-asset redirects.
 # Cleanup on every exit path: the trap is armed before any download so a
 # mismatch or failed self-check cannot leak the staged assets or extract dir.
-cleanup() {
+rtk_cleanup() {
   [ -n "${EXTRACT_DIR:-}" ] && rm -rf "$EXTRACT_DIR"
   rm -f "$STAGING_DIR/$ASSET_TARBALL" "$STAGING_DIR/$ASSET_CHECKSUMS" "$STAGING_DIR/rtk-preexisting.bak"
 }
-trap cleanup EXIT
+trap rtk_cleanup EXIT
 
 for asset in "$ASSET_TARBALL" "$ASSET_CHECKSUMS"; do
   # Refuse a pre-existing symlink/regular target: curl -o follows symlinks,
@@ -217,6 +219,4 @@ if ! rtk_version_matches; then
   rtk_unavailable "installed rtk failed the version self-check for $VERSION (corrupt or non-executable binary); rolled back, agent runs uncompressed"
 fi
 
-# Staging lifecycle cleanup is handled by the exit trap above - no orphan
-# tarball, checksums, or extract dir remains on any exit path.
 echo "rtk setup: verified and installed rtk $PIN to $INSTALL_DIR/rtk"
