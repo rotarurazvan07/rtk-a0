@@ -1,0 +1,151 @@
+"""Story 3.3 — zero-config default-on operation & Plugin Hub metadata.
+
+Pure-venv suite (no A0 imports, no network). Verifies:
+- AC-01: plugin.yaml declares always_enabled: true (FR20 default-on; loader semantics
+  bypass toggles for always_enabled plugins — /a0/helpers/plugins.py:492-511,
+  :573-585) and no config file is required to activate.
+- AC-02: manifest satisfies the real install-time validation contract
+  (PluginMetadata at /a0/helpers/plugins.py:77-85; validate_plugin_dir /
+  _get_plugin_name at /a0/plugins/_plugin_installer/helpers/install.py:31-50).
+- AC-03: git-clone-shaped layout contains everything the installer needs
+  (plugin.yaml at root is the hard requirement — install.py:43).
+- AC-04: honest metadata — name regex, no MVP-overclaiming fields or descriptions.
+
+Red phase: written against the CURRENT manifest (always_enabled: false).
+"""
+
+from __future__ import annotations
+
+import re
+import shutil
+from pathlib import Path
+
+import pytest
+import yaml
+
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+MANIFEST = PLUGIN_ROOT / "plugin.yaml"
+
+# Real required manifest fields per /a0/helpers/plugins.py:77-85 (PluginMetadata).
+# author/license/repo are NOT manifest fields (PluginListItem display attrs, :91-113).
+REQUIRED_STR_FIELDS = ("name", "title", "description", "version")
+BOOL_FLAGS = ("per_project_config", "per_agent_config", "always_enabled")
+NAME_RE = re.compile(r"^[a-z0-9_]+$")
+
+
+def _load_manifest() -> dict:
+    return yaml.safe_load(MANIFEST.read_text(encoding="utf-8"))
+
+
+# AC-01: default-on
+
+def test_manifest_declares_always_enabled():
+    """AC-01: `always_enabled: true` is the default-on mechanism — the loader
+    enables such plugins regardless of .toggle-* files (helpers/plugins.py:492-511)
+    and refuses to disable them (helpers/plugins.py:573-585)."""
+    manifest = _load_manifest()
+    assert manifest.get("always_enabled") is True, (
+        "plugin.yaml must set always_enabled: true for FR20 zero-config default-on"
+    )
+
+
+def test_no_default_config_required():
+    """AC-01: activation needs no config file — the loader reads default_config.yaml
+    only when present (helpers/plugins.py:59, :673-688); MVP ships none."""
+    assert not (PLUGIN_ROOT / "default_config.yaml").exists(), (
+        "no default_config.yaml — compression must activate from the manifest alone"
+    )
+
+
+def test_extension_registered_unconditionally():
+    """AC-01: the extension file exists at the named-extension path — registration is
+    unconditional on module load; no toggle/gate file is needed for it to run."""
+    ext = PLUGIN_ROOT / "extensions" / "python" / "tool_execute_before" / "_10_rtk_intercept.py"
+    assert ext.is_file(), "tool_execute_before extension must ship in the plugin"
+    src = ext.read_text(encoding="utf-8")
+    assert "class" in src and "Extension" in src, (
+        "extension must subclass/register as an Extension (Story 1.1 pattern)"
+    )
+
+
+# AC-02 / AC-04: schema + honesty
+
+def test_required_manifest_fields_present_and_typed():
+    """AC-02: name/title/description/version present as non-empty strings — the
+    installer hard-fails on a missing name (install.py:31-34) and model-validates
+    the rest (helpers/plugins.py:77-85, :291)."""
+    manifest = _load_manifest()
+    for field in REQUIRED_STR_FIELDS:
+        assert isinstance(manifest.get(field), str) and manifest[field].strip(), (
+            f"required field {field!r} missing/empty in plugin.yaml"
+        )
+    for flag in BOOL_FLAGS:
+        if flag in manifest:
+            assert isinstance(manifest[flag], bool), f"{flag!r} must be boolean"
+
+
+def test_name_matches_hub_pattern():
+    """AC-02/AC-04: name matches ^[a-z0-9_]+$ and equals the install directory name
+    (installer enforces name == directory — install.py:48-50)."""
+    manifest = _load_manifest()
+    name = manifest.get("name", "")
+    assert NAME_RE.match(name), f"name {name!r} must match ^[a-z0-9_]+$"
+    assert name == "rtk_a0", "name must be rtk_a0"
+    assert PLUGIN_ROOT.name == "rtk_a0", "plugin dir must be rtk_a0"
+
+
+def test_description_states_install_and_uninstall_behavior():
+    """AC-02: description honestly states that install auto-downloads the pinned
+    RTK binary and that uninstall removes only plugin files, leaving the RTK
+    binary user-owned (contract per hooks.py lifecycle, Story 2.4)."""
+    desc = _load_manifest().get("description", "").lower()
+    assert "rtk" in desc, "description must name RTK"
+    assert re.search(r"(download|install)", desc) and "binary" in desc, (
+        "description must state that install downloads the RTK binary"
+    )
+    assert re.search(r"uninstall", desc) or re.search(r"leav", desc), (
+        "description must state uninstall behavior (binary left user-owned)"
+    )
+
+
+def test_no_mvp_overclaims():
+    """AC-04: no misleading claims — MVP ships no settings UI, no per-project
+    toggles, no stats persistence (architecture:105/145/487)."""
+    manifest = _load_manifest()
+    desc = manifest.get("description", "").lower()
+    assert not manifest.get("settings_sections"), "MVP manifest has no settings_sections"
+    assert manifest.get("per_project_config") is False
+    assert manifest.get("per_agent_config") is False
+    for needle in ("guaranteed", "settings", "per-project", "dashboard", "stats.json"):
+        assert needle not in desc, f"description must not claim {needle!r} (unshipped in MVP)"
+    assert not (PLUGIN_ROOT / "stats.json").exists(), "no plugin-owned persistence (MVP scope)"
+
+
+# AC-03: install-layout simulation (both Hub-zip and git clone run the same
+# validate_plugin_dir contract — plugin.yaml at root + name == directory)
+
+def test_git_clone_layout_is_install_ready(tmp_path):
+    """AC-03: a fresh git-clone-shaped tree contains every path the loader and
+    installer require (install.py:43 hard-requires plugin.yaml at root)."""
+    shutil.copytree(
+        PLUGIN_ROOT,
+        tmp_path / "rtk_a0",
+        ignore=shutil.ignore_patterns(
+            "venv", "usr", "node_modules", "__pycache__", ".pytest_cache",
+            ".coverage", ".git", ".a0proj", "_bmad",".serena", "_bmad-output",
+        ),
+    )
+    layout = tmp_path / "rtk_a0"
+    required = [
+        "plugin.yaml",
+        "hooks.py",
+        "rtk_pin.txt",
+        "LICENSE",
+        "scripts/setup.sh",
+        "extensions/python/tool_execute_before/_10_rtk_intercept.py",
+    ]
+    missing = [rel for rel in required if not (layout / rel).is_file()]
+    assert not missing, f"install layout missing required paths: {missing}"
+    # name == directory (installer dir-match pin)
+    manifest = yaml.safe_load((layout / "plugin.yaml").read_text(encoding="utf-8"))
+    assert manifest["name"] == layout.name == "rtk_a0"

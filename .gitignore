@@ -1,0 +1,17 @@
+.a0proj/
+.serena/
+__pycache__/
+.pytest_cache/
+*.pyc
+venv/
+.venv/
+*.log
+.DS_Store
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/

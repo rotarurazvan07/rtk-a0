@@ -1,0 +1,7 @@
+name: rtk_a0
+title: RTK Compression
+description: Thin fail-open adapter that routes Agent Zero terminal commands through the RTK CLI for output compression. Install automatically downloads the pinned RTK binary; uninstall removes plugin files only and leaves the RTK binary user-owned.
+version: 1.0.0
+always_enabled: true
+per_project_config: false
+per_agent_config: false
