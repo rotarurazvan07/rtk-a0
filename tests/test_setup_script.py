@@ -187,7 +187,7 @@ def test_mocked_curl_downloads_both_assets_to_staging(tmp_path):
     assert any(expected[EXPECTED_CHECKSUMS] in c for c in seen_urls)
 
     # Absence allowlist: the -fsSL/--fail checks above are presence-shaped and
-# cannot see TLS-weakening or proxy-redirect drift (blind ).
+# cannot see TLS-weakening or proxy-redirect drift.
     for call in calls:
         tokens = call.split()
         for flag in (
@@ -389,7 +389,7 @@ def _make_fake_tarball(tmp_path, nested=False):
     # the REAL rtk v1.0.1 binary prints "rtk 1.0.1" (no v prefix) —
     # byte-verified during against the actual release artifact. The
     # fixture must encode the real output format or the suite cannot catch
-    # pin/version mismatches (edge TS-1).
+    # pin/version mismatches.
     stub_path.write_text("#!/usr/bin/env bash\necho 'rtk 1.0.1 (fake fixture)'\n", encoding="utf-8")
     stub_path.chmod(0o755)
     tarball = tmp_path / EXPECTED_TARBALL
@@ -698,7 +698,7 @@ def test_staging_symlink_is_rejected(tmp_path):
 
 
 def test_real_version_output_format_no_v_prefix():
-    """edge TS-1: the real rtk 1.0.1 binary prints 'rtk 1.0.1' (no v). Byte-verified during against the actual release artifact (github.com/rtk-ai/rtk v1.0.1): `rtk --version` -> "rtk 1.0.1". The fixture stub must encode that exact shape or no test can catch a pin/version-format mismatch."""
+    """The real rtk 1.0.1 binary prints 'rtk 1.0.1' (no v). Byte-verified during against the actual release artifact (github.com/rtk-ai/rtk v1.0.1): `rtk --version` -> "rtk 1.0.1". The fixture stub must encode that exact shape or no test can catch a pin/version-format mismatch."""
     pin = PIN_FILE.read_text(encoding="utf-8").strip()
     assert pin.startswith("v") and pin[1:] == "1.0.1", pin
     src = SETUP.read_text(encoding="utf-8")
@@ -1091,9 +1091,9 @@ def test_no_checksums_entry_stays_fail_hard(tmp_path):
 def test_agent_fail_open_bridge_pointer(tmp_path):
     """Setup.sh owns provisioning only. The runtime contract - the agent stays fully functional with uncompressed commands when rtk is absent - is proven by the intercept test suite in the framework runtime; this guard fails if that suite disappears or is renamed."""
     intercept_suite = PLUGIN_ROOT / "tests" / "test_rtk_intercept.py"
-    assert intercept_suite.is_file(), "AC-04 bridge: intercept test suite must exist"
+    assert intercept_suite.is_file(), "bridge: intercept test suite must exist"
     src = intercept_suite.read_text(encoding="utf-8")
-    assert "which" in src, "AC-04 bridge: suite must exercise the availability guard"
+    assert "which" in src, "bridge: suite must exercise the availability guard"
 
 
 # ---------------------------------------------------------------------------

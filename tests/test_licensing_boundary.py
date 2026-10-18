@@ -195,7 +195,7 @@ def test_all_compression_delegated_to_rtk_rewrite_binary():
                     isinstance(node.func, ast.Name)
                     and node.func.id == "system"):
                 offenders.append((str(p.relative_to(PLUGIN_ROOT)), node.lineno,
-                                  "os.system is not argv-list delegation (FR26)"))
+                                  "os.system is not argv-list delegation"))
                 continue
             target = ast.unparse(node.func.value).lower()
             if "subprocess" not in target and "sp" not in target:
@@ -208,7 +208,7 @@ def test_all_compression_delegated_to_rtk_rewrite_binary():
                 # compression logic.
                 if p.name != "hooks.py":
                     offenders.append((str(p.relative_to(PLUGIN_ROOT)), node.lineno,
-                                      "non-list subprocess argv (FR26)"))
+                                      "non-list subprocess argv"))
                 continue
             # Delegation targets: the 'rtk' binary or the plugin's own
             # scripts/setup.sh (provisioning, hooks.py only -).
@@ -223,7 +223,7 @@ def test_all_compression_delegated_to_rtk_rewrite_binary():
             if not ok:
                 offenders.append((str(p.relative_to(PLUGIN_ROOT)), node.lineno,
                                   argv_src[:80]))
-    assert not offenders, f"non-delegated subprocess calls (FR26): {offenders}"
+    assert not offenders, f"non-delegated subprocess calls: {offenders}"
 
 
 def test_no_reimplemented_filter_or_translation_tables():
@@ -299,7 +299,7 @@ def test_no_shell_true_in_plugin_sources():
                     if truthy:
                         offenders.append(
                             (str(p.relative_to(PLUGIN_ROOT)), node.lineno))
-    assert not offenders, f"shell=True-style process calls (AC-05): {offenders}"
+    assert not offenders, f"shell=True-style process calls: {offenders}"
 
 
 def test_no_writes_outside_plugin_dir_except_rtk_binary():
@@ -314,7 +314,7 @@ def test_no_writes_outside_plugin_dir_except_rtk_binary():
                 if (v.startswith("/") and v.count("/") >= 2
                         and not v.startswith(tolerated)):
                     offenders.append((str(p.relative_to(PLUGIN_ROOT)), node.lineno, v))
-    assert not offenders, f"absolute paths outside plugin tree (NFR9): {offenders}"
+    assert not offenders, f"absolute paths outside plugin tree: {offenders}"
 
 
 def test_no_framework_files_in_plugin_tree():

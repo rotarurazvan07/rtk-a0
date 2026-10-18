@@ -277,7 +277,7 @@ def test_pre_update_and_uninstall_never_raise(hooks, monkeypatch):
         if not ln.lstrip().startswith("#")
     )
     for banned in ("shutil.rmtree", "os.remove", "os.unlink", "unlink("):
-        assert banned not in code, f"FR23: no file removal in hooks: found {banned}"
+        assert banned not in code, f"no file removal permitted in hooks: found {banned}"
 
 
 def test_hooks_source_pins(hooks):
@@ -287,8 +287,8 @@ def test_hooks_source_pins(hooks):
         if not ln.lstrip().startswith("#")
     )
     assert "shell=True" not in code
-    assert "v1.0.1" not in code, "pin must stay single-source in rtk_pin.txt (NFR12)"
-    assert "/usr/local/bin" in code, "install dir constant required (D4/FR16)"
+    assert "v1.0.1" not in code, "pin must stay single-source in rtk_pin.txt"
+    assert "/usr/local/bin" in code, "install dir constant required"
 
 
 def test_setup_script_referenced_exists(hooks):

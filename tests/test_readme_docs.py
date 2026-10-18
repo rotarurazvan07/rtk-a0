@@ -22,26 +22,26 @@ def _headings(text: str) -> str:
 
 # ---: install paths, automatic setup, restart, auto-download, warn-not-fail ---
 
-def test_ac01_readme_exists_at_root():
+def test_readme_exists_at_root():
     assert README.exists()
 
 
-def test_ac01_documents_plugin_hub_install_path():
+def test_documents_plugin_hub_install_path():
     text = _readme_text().lower()
     assert "plugin hub" in text, "README must document the Plugin Hub install path"
 
 
-def test_ac01_documents_git_clone_install_path():
+def test_documents_git_clone_install_path():
     text = _readme_text()
     assert "git clone" in text.lower()
     assert "usr/plugins" in text
 
 
-def test_ac01_documents_restart_step():
+def test_documents_restart_step():
     assert "restart" in _readme_text().lower()
 
 
-def test_ac01_documents_auto_download_of_pinned_binary():
+def test_documents_auto_download_of_pinned_binary():
     text = _readme_text()
     assert "setup.sh" in text
     # pinned binary provenance must be stated
@@ -50,7 +50,7 @@ def test_ac01_documents_auto_download_of_pinned_binary():
     assert "/usr/local/bin/rtk" in text
 
 
-def test_ac01_documents_warn_not_fail():
+def test_documents_warn_not_fail():
     low = _readme_text().lower()
     assert "warn" in low and "fail" in low
     # warn-not-fail semantics: agent keeps working without the binary
@@ -59,7 +59,7 @@ def test_ac01_documents_warn_not_fail():
 
 # ---: verify savings via rtk gain ---
 
-def test_ac02_documents_rtk_gain_verification():
+def test_documents_rtk_gain_verification():
     text = _readme_text()
     assert "rtk gain" in text
     assert "token" in text.lower() or "saved" in text.lower()
@@ -67,16 +67,16 @@ def test_ac02_documents_rtk_gain_verification():
 
 # ---: bypass escape hatch + fail-open guarantee prominence ---
 
-def test_ac03_documents_rtk_bypass_escape_hatch():
+def test_documents_rtk_bypass_escape_hatch():
     assert "rtk bypass" in _readme_text()
 
 
-def test_ac03_documents_fail_open_guarantee():
+def test_documents_fail_open_guarantee():
     low = _readme_text().lower()
     assert "fail-open" in low or "fail open" in low
 
 
-def test_ac03_bypass_is_prominent_heading_or_bold():
+def test_bypass_is_prominent_heading_or_bold():
     text = _readme_text()
     prominent = any(
         ("bypass" in ln.lower()) and (ln.lstrip().startswith("#") or ln.lstrip().startswith("**"))
@@ -87,28 +87,28 @@ def test_ac03_bypass_is_prominent_heading_or_bold():
 
 # ---: licensing + support statement ---
 
-def test_ac04_states_plugin_apache_license():
+def test_states_plugin_apache_license():
     low = _readme_text().lower()
     assert "apache" in low
 
 
-def test_ac04_declares_rtk_busl_dependency():
+def test_declares_rtk_busl_dependency():
     low = _readme_text().lower()
     assert "busl" in low
 
 
-def test_ac04_states_orchestrate_only_posture():
+def test_states_orchestrate_only_posture():
     low = _readme_text().lower()
     assert "orchestrat" in low
 
 
-def test_ac04_states_linux_container_only_support():
+def test_states_linux_container_only_support():
     low = _readme_text().lower()
     assert "linux" in low
     assert "fr28" in low or "linux-container-only" in low or "linux container" in low
 
 
-def test_ac04_references_licensing_doc():
+def test_states_licensing_boundary_reference():
     text = _readme_text()
     assert "docs/licensing-boundary.md" in text
     assert (PLUGIN_ROOT / "docs" / "licensing-boundary.md").exists()
@@ -116,21 +116,21 @@ def test_ac04_references_licensing_doc():
 
 # ---: troubleshooting section — warning, agent-works, remedy ---
 
-def test_ac05_has_troubleshooting_section():
+def test_has_troubleshooting_section():
     assert "troubleshoot" in _headings(_readme_text()).lower()
 
 
-def test_ac05_explains_unavailable_warning():
+def test_explains_unavailable_warning():
     low = _readme_text().lower()
     assert "warning" in low or "not available" in low or "unavailable" in low
 
 
-def test_ac05_confirms_agent_still_works():
+def test_confirms_agent_still_works():
     low = _readme_text().lower()
     assert "still works" in low or "keeps working" in low or "agent still" in low or "unchanged" in low
 
 
-def test_ac05_lists_rerun_setup_remedy():
+def test_lists_rerun_setup_remedy():
     text = _readme_text()
     assert "setup.sh" in text
     # the remedy must be a form setup.sh actually accepts (no invented flags —
@@ -164,7 +164,7 @@ def test_fail_open_acknowledges_rc3_acceptance():
     # enumeration must not claim every non-zero exit falls back to original
     low = _readme_text().lower()
     assert ("rc 3" in low) or ("allow-rules" in low), (
-        "fail-open section must acknowledge the sanctioned rc-3 acceptance"
+        "fail-open section must acknowledge the rewrite-available exit"
     )
 
 

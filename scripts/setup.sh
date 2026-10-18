@@ -61,7 +61,7 @@ rtk_version_matches() {
 rtk_warn() { echo "rtk setup: WARNING: $*" >&2; }
 rtk_unavailable() {
   rtk_warn "$*"
-  rtk_warn "rtk unavailable; the plugin stays installed and the agent will run terminal commands uncompressed (failing open, FR15/NFR6)"
+  rtk_warn "rtk unavailable; the plugin stays installed and the agent will run terminal commands uncompressed (failing open)"
   exit 0
 }
 

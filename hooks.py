@@ -235,7 +235,7 @@ def pre_update():
             _info("rtk " + installed + " matches pin; update leaves binary untouched")
             return
         if installed is None:
-            _info("rtk binary unavailable or unreadable; running setup for FR24 re-provision")
+            _info("rtk binary unavailable or unreadable; running setup to re-provision")
         elif pin is None:
             _info("rtk pin unreadable; running setup to re-provision")
         else:

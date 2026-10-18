@@ -247,7 +247,7 @@ def test_delegation_invokes_rtk_rewrite_argv_list():
     assert kwargs.get("capture_output") is True
     assert kwargs.get("text") is True
     assert kwargs.get("timeout") == 2.0
-    assert "shell" not in kwargs or kwargs.get("shell") is False, "shell=True forbidden (D2)"
+    assert "shell" not in kwargs or kwargs.get("shell") is False, "shell=True forbidden"
 
 
 def test_mutation_on_success():
@@ -319,7 +319,7 @@ def test_rewritten_rtk_prefixed_command_passes_through_untouched():
     # Round 2 (what code_execution_tool would dispatch): rtk-prefixed -> untouched.
     with patch("subprocess.run") as m2:
         ext.execute(tool_name="code_execution_tool", tool_args=tool_args)
-        assert m2.call_count == 0, "rewritten rtk command must not be re-compressed (NFR3)"
+        assert m2.call_count == 0, "rewritten rtk command must not be re-compressed"
     assert tool_args["code"] == "rtk git status", "rtk-prefixed command passes through untouched"
 
 
@@ -344,7 +344,7 @@ def test_timeout_constant_pinned():
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    assert module.RTK_REWRITE_TIMEOUT == 2.0, "RTK_REWRITE_TIMEOUT must be 2.0 (D7)"
+    assert module.RTK_REWRITE_TIMEOUT == 2.0, "RTK_REWRITE_TIMEOUT must be 2.0"
     src = (EXT_DIR / "_10_rtk_intercept.py").read_text()
     assert "timeout=RTK_REWRITE_TIMEOUT" in src, "timeout must use the constant, not a literal"
 
@@ -461,7 +461,7 @@ def test_timeout_expired_fails_open():
         "subprocess.run", side_effect=_subprocess.TimeoutExpired(["rtk", "rewrite", "git status"], 2.0)
     ):
         ext.execute(tool_name="code_execution_tool", tool_args=tool_args)
-    assert tool_args["code"] == "git status", "timeout must fail open (NFR1)"
+    assert tool_args["code"] == "git status", "timeout must fail open"
 
 
 def test_os_error_fails_open():
@@ -563,8 +563,8 @@ def test_guard_contract_source_structure():
     assert "shutil.which" in src, "availability guard must call shutil.which"
     assert "rtk_a0_missing_warned" in src
     assert src.count('RTK_MISSING_WARNED] =') == 1, "flag written at exactly one place"
-    assert 'RTK_MISSING_WARNED = "rtk_a0_missing_warned"' in src, "warn-once key pinned once (D9)"
-    assert "except subprocess.TimeoutExpired" in src, "explicit timeout branch required (D3 case 6)"
+    assert 'RTK_MISSING_WARNED = "rtk_a0_missing_warned"' in src, "warn-once key pinned once"
+    assert "except subprocess.TimeoutExpired" in src, "explicit timeout branch required"
     assert src.index("except subprocess.TimeoutExpired") < src.index("except Exception")
     assert "encoding=\"utf-8\"" in src, "explicit utf-8 codec required (locale-safe)"
     # ordering: idempotence gate -> availability -> guarded call
@@ -940,7 +940,7 @@ def test_no_rtk_derived_code_or_licensing_drift():
         for needle in needles:
             assert needle not in src, f"RTK-derived token {needle!r} in {pyfile}"
     license_text = (PLUGIN_ROOT / "LICENSE").read_text()
-    assert "Apache License" in license_text, "LICENSE must be Apache-2.0 (FR25)"
+    assert "Apache License" in license_text, "LICENSE must be Apache-2.0"
 
 
 def test_fail_open_branches_emit_no_log_noise():
@@ -962,7 +962,7 @@ def test_fail_open_branches_emit_no_log_noise():
         ):
             ext.execute(tool_name="code_execution_tool", tool_args=tool_args)
         assert tool_args["code"] == "git status", f"{name} must fail open"
-        assert len(agent.warnings) == 0, f"{name}: D9 notification is reserved for binary-missing"
+        assert len(agent.warnings) == 0, f"{name}: notification is reserved for binary-missing"
 
 
 # ---: rc-3 acceptance gate (, CC -ESCALATION-1 Option A) ---
@@ -982,7 +982,7 @@ def test_rc3_rewrite_applies_mutation():
     ) as run:
         ext.execute(tool_name="code_execution_tool", tool_args=tool_args)
     run.assert_called_once()  # availability + preceding gates passed through
-    assert tool_args["code"] == "rtk git status", "rc 3 must apply the rewrite (ADR-006)"
+    assert tool_args["code"] == "rtk git status", "rewrite-available exit must apply the rewrite"
     for key in ("runtime", "tool_name", "session"):
         assert tool_args[key] == snapshot[key], f"only 'code' may be written, touched {key}"
 
@@ -1046,7 +1046,7 @@ def test_rc3_does_not_weaken_preceding_gates():
 def test_rc3_gate_source_pin():
     """Structural pin: the result gate in the extension source must accept exactly the rc 0/3 pair as an inline membership test."""
     src = (PLUGIN_ROOT / "extensions" / "python" / "tool_execute_before" / "_10_rtk_intercept.py").read_text()
-    assert "result.returncode not in (0, 3)" in src, "case-8 gate must accept rc 0 and 3 (ADR-006)"
+    assert "result.returncode not in (0, 3)" in src, "result gate must accept rc 0 and 3"
     assert "result.returncode != 0" not in src, "legacy rc != 0 gate must be gone"
 
 
@@ -1086,7 +1086,7 @@ def test_first_rewrite_hints_gain_once():
     assert len(hints) == 1, f"exactly one gain hint expected, got {len(hints)}"
     assert hints[0].get("type") == "info", "hint must be informational, not a warning"
     assert "rtk gain" in hints[0].get("content", ""), "hint must point at `rtk gain`"
-    assert agent.data.get("rtk_a0_gain_hinted") is True, "hint latch must set (D9 shape)"
+    assert agent.data.get("rtk_a0_gain_hinted") is True, "hint latch must set"
 
 
 def test_gain_hint_silent_after_first():
@@ -1173,7 +1173,7 @@ def test_no_plugin_owned_savings_persistence():
     ext_src = (PLUGIN_ROOT / "extensions" / "python" / "tool_execute_before" / "_10_rtk_intercept.py").read_text()
     write_primitives = ("open(", ".write_text(", ".write_bytes(", "json.dump", "json.load", "Path(", "mkdir(", "shutil.copy", "os.replace", "os.rename")
     for needle in write_primitives:
-        assert needle not in ext_src, f"AC-03: extension must not persist data, found {needle!r}"
+        assert needle not in ext_src, f"extension must not persist data, found {needle!r}"
     owned = []
     for candidate in PLUGIN_ROOT.rglob("*"):
         if candidate.suffix != ".json" and "stats" not in candidate.name and "state" not in candidate.name:
@@ -1182,7 +1182,7 @@ def test_no_plugin_owned_savings_persistence():
         if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git")):
             continue
         owned.append(str(candidate))
-    assert not owned, f"AC-03: plugin-owned persistence surface exists: {owned}"
+    assert not owned, f"plugin-owned persistence surface exists: {owned}"
     # extension: gain-visibility must add nothing either —
     # no plugin-owned gain/savings ledger anywhere in the plugin tree.
     ledger = []
@@ -1196,9 +1196,9 @@ def test_no_plugin_owned_savings_persistence():
         if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", "docs", "node_modules")):
             continue
         ledger.append(str(candidate))
-    assert not ledger, f"AC-03: no plugin-owned gain/savings ledger: {ledger}"
+    assert not ledger, f"no plugin-owned gain/savings ledger: {ledger}"
     # hooks.py and scripts/setup.sh must not write any stats-like surface.
     for text_path in (PLUGIN_ROOT / "hooks.py", PLUGIN_ROOT / "scripts" / "setup.sh"):
         body = text_path.read_text()
         for needle in ("stats.json", "gain.json", "savings.json"):
-            assert needle not in body, f"AC-03: {text_path.name} must not persist {needle}"
+            assert needle not in body, f"{text_path.name} must not persist {needle}"

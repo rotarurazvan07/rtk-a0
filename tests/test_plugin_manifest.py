@@ -29,7 +29,7 @@ def test_manifest_declares_always_enabled():
     """`always_enabled: true` is the default-on mechanism — the loader enables such plugins regardless of.toggle-* files (helpers/plugins.py:492-511) and refuses to disable them (helpers/plugins.py:573-585)."""
     manifest = _load_manifest()
     assert manifest.get("always_enabled") is True, (
-        "plugin.yaml must set always_enabled: true for FR20 zero-config default-on"
+        "plugin.yaml must set always_enabled true for zero-config default-on"
     )
 
 
@@ -46,7 +46,7 @@ def test_extension_registered_unconditionally():
     assert ext.is_file(), "tool_execute_before extension must ship in the plugin"
     src = ext.read_text(encoding="utf-8")
     assert "class" in src and "Extension" in src, (
-        "extension must subclass/register as an Extension (Story 1.1 pattern)"
+        "extension must subclass/register as an Extension"
     )
 
 

@@ -191,7 +191,7 @@ def test_real_rewrite_rc3_observation():
         mp.setenv("PATH", control_path)
         ext_mod.RtkIntercept(agent).execute("code_execution_tool", args)
     assert args["code"] == "rtk git status"
-    print(f"rc-3 ACCEPTED (ADR-006): extension mutated under raw rc={raw.returncode}")
+    print(f"rewrite-available exit ACCEPTED: extension mutated under raw rc={raw.returncode}")
 
 
 def test_real_rewrite_never_executes_command():
@@ -255,7 +255,7 @@ def test_real_command_output_reduction_measurement(tmp_path):
     # git status is the >=60% anchor: it must genuinely compress.
     gs_raw, gs_comp = measure(["git", "status"], [rtk_bin, "git", "status"])
     gs_reduction = 100 * (1 - gs_comp / gs_raw)
-    print(f"MEASURED PRD anchor git status: {gs_raw} -> {gs_comp} bytes ({gs_reduction:.1f}% reduction)")
+    print(f"MEASURED git status: {gs_raw} -> {gs_comp} bytes ({gs_reduction:.1f}% reduction)")
     assert gs_reduction > 0.0
     # ls expansion is a recorded counter-example, not a failure: at least
     # one of the three commands must compress for the pin to hold.

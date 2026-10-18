@@ -27,7 +27,7 @@ def test_manifest_pinned_fields():
     # supersedes the off-by-default assumption: requires
     # zero-config default-on once setup auto-provisions the binary (hooks.install
     # runs scripts/setup.sh on plugin install —).
-    assert data["always_enabled"] is True, "always_enabled must be true (FR20 default-on, Story 3.3)"
+    assert data["always_enabled"] is True, "always_enabled must be true for zero-config default-on"
     assert data.get("per_project_config") is False, "per_project_config must be false"
     assert data.get("per_agent_config") is False, "per_agent_config must be false"
     assert "settings_sections" not in data, "settings_sections must be absent (MVP)"
