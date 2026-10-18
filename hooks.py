@@ -1,4 +1,4 @@
-"""RTK plugin lifecycle hooks (A0 plugin contract, Story 2.4).
+"""RTK plugin lifecycle hooks (Agent Zero plugin contract).
 
 Real interface verified against the framework (cite if changed):
 - helpers/plugins.py:908-936 call_plugin_hook loads this file by path and
@@ -7,8 +7,8 @@ Real interface verified against the framework (cite if changed):
 - plugins/_plugin_installer/helpers/install.py:298-302 runs install/pre_update;
   helpers/plugins.py:411-414 runs uninstall before deleting the plugin dir.
 - helpers/functions.py safe_call adapts arguments but never catches
-  exceptions, and the installer re-raises - so every hook below self-guards
-  and warns instead of failing the plugin lifecycle (NFR6, D10).
+  exceptions, and the installer re-raises them - so every hook below
+  self-guards and warns instead of failing the plugin lifecycle.
 """
 from __future__ import annotations
 
@@ -19,15 +19,15 @@ import threading
 from pathlib import Path
 
 _PLUGIN_DIR = Path(__file__).resolve().parent
-# Provisioning lives in scripts/setup.sh (Stories 2.1-2.3); hooks only wire it.
+# Provisioning lives in scripts/setup.sh; hooks only wire it.
 _SETUP_SCRIPT = _PLUGIN_DIR / "scripts" / "setup.sh"
-# Container OS bin dir (architecture D4/FR16) - never the framework venv.
+# Container OS bin dir - never the framework venv.
 INSTALL_DIR = "/usr/local/bin"
-# Pin stays single-source in rtk_pin.txt (NFR12/D5); hooks never read versions.
+# Pin is single-source in rtk_pin.txt; hooks never read versions.
 _SETUP_TIMEOUT = 120  # seconds; download+verify+install worst case on slow links
-# Concurrent lifecycle callers share setup.sh fixed staging path
-# (CR-2.1-D2/D3) - serialize in-process callers. A0 update path calls
-# pre_update then install sequentially (install.py:245,270).
+# Concurrent lifecycle callers share the setup.sh fixed staging path -
+# serialize in-process callers. The update path calls pre_update then
+# install sequentially.
 _SETUP_LOCK = threading.RLock()
 
 
@@ -39,8 +39,8 @@ class _Style:
         try:
             print("rtk hooks: " + level + ": " + " ".join(str(a) for a in args), file=sys.stderr)
         except Exception:
-            # CR 3.4 F1: a closed stderr raises ValueError, not an OSError;
-            # every writer failure must be swallowed (NFR6 is absolute).
+            # A closed stderr raises ValueError, not OSError; swallow every
+            # writer failure so logging can never break a hook.
             pass
 
     def info(self, *args, **kwargs):
@@ -57,7 +57,7 @@ _style = _Style()
 
 
 def _warn(msg):
-    """Warning that cannot itself fail the hook (NFR6 is absolute: CR-2.4 P4)."""
+    """Warning that cannot itself fail the hook."""
     try:
         _style.warning(msg)
     except Exception:
@@ -65,8 +65,8 @@ def _warn(msg):
 
 
 def _desc(exc):
-    """Fault-proof exception text (CR 3.4 F2: an exception whose __str__
-    raises must not turn a handled degradation into an escape)."""
+    """Fault-proof exception text: an exception whose __str__ raises must
+    not turn a handled degradation into an escape."""
     try:
         return str(exc)
     except Exception:
@@ -77,16 +77,16 @@ def _desc(exc):
 
 
 def _info(msg):
-    """Status line that cannot abort the action it announces (CR 3.4 F6)."""
+    """Status line that cannot abort the action it announces."""
     try:
         _style.info(msg)
     except Exception:
         pass
 
 def _setup_env():
-    """Environment for setup.sh; guarantees INSTALL_DIR on PATH (CR-2.3-D2).
+    """Environment for setup.sh; guarantees INSTALL_DIR on PATH.
 
-    setup.sh self-check resolves rtk through PATH (setup.sh:217-219); if the
+    The setup self-check resolves rtk through PATH; if the
     lifecycle process PATH lacks /usr/local/bin the check would fail after a
     successful install. Append the pinned install dir when absent; never
     duplicate an existing entry.
@@ -106,10 +106,10 @@ def _run_setup():
             ["bash", str(_SETUP_SCRIPT)],
             capture_output=True,
             text=True,
-            # CR 2.4 P1: explicit encoding - text=True decodes strictly in the
-            # interpreter locale and a non-ASCII setup byte would raise
-            # UnicodeDecodeError (a ValueError, not an OSError) from inside
-            # subprocess.run; utf-8+replace keeps the hook raise-free.
+            # Explicit encoding: text=True decodes strictly in the interpreter
+            # locale and a non-ASCII setup byte would raise UnicodeDecodeError
+            # (a ValueError, not an OSError) from inside subprocess.run;
+            # utf-8+replace keeps the hook raise-free.
             encoding="utf-8",
             errors="replace",
             timeout=_SETUP_TIMEOUT,
@@ -127,9 +127,9 @@ def _surface(result):
 def install():
     """A0 install hook: provision RTK via scripts/setup.sh, warn-not-fail.
 
-    Satisfies FR11/D10/NFR6: every outcome (0 provisioned-or-warned,
-    2 usage, other integrity-corrupt, or a raised exception) returns
-    without failing the plugin installation.
+    Every outcome (0 provisioned-or-warned, 2 usage, other
+    integrity-corrupt, or a raised exception) returns without failing the
+    plugin installation.
     """
     try:
         result = _run_setup()
@@ -144,24 +144,23 @@ def install():
         _style.warning("rtk setup failed (" + _desc(exc) + "); agent runs uncompressed")
         return
     except Exception as exc:
-        # CR 2.4 P3: nothing may escape install() - the installer re-raises
-        # hook exceptions (install.py:246-250), so any unexpected failure
-        # (ValueError family, MemoryError, ...) degrades to a warning.
+        # Nothing may escape install(): the installer re-raises hook
+        # exceptions, so any unexpected failure degrades to a warning.
         _style.warning("rtk setup could not run (" + _desc(exc) + "); agent runs uncompressed")
         return
 
     rc = result.returncode
     output = _surface(result)
     if rc == 0:
-        # Provisioned, idempotent skip, or warned-unavailable (Story 2.3).
+        # Provisioned, idempotent skip, or warned-unavailable.
         _style.info("rtk setup complete" + ((": " + output) if output else ""))
         return
     if rc == 2:
         _style.warning("rtk setup usage error (rc=2)" + ((": " + output) if output else ""))
         return
     if rc in (126, 127) or rc < 0:
-        # CR 2.4 P2: missing/non-executable script (126/127) or a signal-killed
-        # child (negative rc) is availability-shaped, NOT integrity corruption.
+        # Missing/non-executable script (126/127) or a signal-killed child
+        # (negative rc) is availability-shaped, not integrity corruption.
         _style.warning("rtk setup could not run (rc=" + str(rc) + ")" + ((": " + output) if output else ""))
         return
     _style.warning(
@@ -177,11 +176,10 @@ _VERSION_TIMEOUT = 10
 def _installed_version():
     """Return the installed rtk version token, or None when unavailable.
 
-    Probes via argv list - no shell mode - (D2 pin) with the same PATH the
-    setup self-check uses (INSTALL_DIR appended); CR-2.4 P1 encoding pins keep
-    a non-ASCII byte from raising UnicodeDecodeError. Real output is
-    ``rtk 1.0.1`` (CR-2.2 live-verified, no v-prefix); the version is the
-    last whitespace token of the last non-empty line.
+    Probes via argv list (never shell mode) with the same PATH the setup
+    self-check uses (INSTALL_DIR appended); explicit utf-8 decoding keeps a
+    non-ASCII byte from raising. Real output is ``rtk 1.0.1`` (no v-prefix);
+    the version is the last whitespace token of the last non-empty line.
     """
     result = subprocess.run(
         ["rtk", "--version"],
@@ -202,42 +200,42 @@ def _installed_version():
 
 
 def _pin_version():
-    """Read the pin file (rtk_pin.txt, NFR12 single source); v-prefix stripped."""
+    """Read the pin file (rtk_pin.txt); v-prefix stripped."""
     raw = (_PLUGIN_DIR / "rtk_pin.txt").read_text(encoding="utf-8").strip()
     return raw[1:] if raw.startswith("v") else raw
 
 
 def pre_update():
-    """A0 pre_update hook (FR24/D10): re-provision only on version drift.
+    """A0 pre_update hook: re-provision only on version drift.
 
     Installed rtk --version vs rtk_pin.txt, token-exact: equal -> keep the
     binary (no setup invocation); absent/unreadable/different -> drift ->
-    re-run setup.sh (which itself warn-not-fails, Story 2.3, and idempotent-
-    skips when already correct, Story 2.2). Never raises (NFR6: safe_call
-    never catches; the installer re-raises hook exceptions).
+    re-run setup.sh (which itself warns-not-fails, and idempotently skips
+    when already correct). Never raises: the framework never catches hook
+    exceptions and the installer re-raises them.
     """
-    # CR 3.4 F2: the outer guard is fault-proof - every inner handler builds
-    # its message via _desc() and _warn(), so nothing can escape this hook.
+    # The outer guard is fault-proof: every inner handler builds its message
+    # via _desc() and _warn(), so nothing can escape this hook.
     try:
         try:
             installed = _installed_version()
         except Exception as exc:
-            # CR 3.4 F5: ANY probe failure (absent binary, OSError, timeout,
-            # or a ValueError/TypeError-family fault) = unreadable = drift.
+            # Any probe failure (absent binary, OSError, timeout, or a
+            # ValueError/TypeError-family fault) is unreadable = drift.
             installed = None
             _warn("rtk version probe failed (" + _desc(exc) + "); re-checking via setup")
         try:
             pin = _pin_version()
         except Exception as exc:
-            # CR 3.4 F4: an unreadable pin is plugin damage, not a version match;
-            # warn distinctly and still attempt re-provisioning (FR24).
+            # An unreadable pin is plugin damage, not a version match; warn
+            # distinctly and still attempt re-provisioning.
             pin = None
             _warn("rtk pin unreadable (" + _desc(exc) + "); re-checking via setup")
         if installed is not None and pin is not None and installed == pin:
             _info("rtk " + installed + " matches pin; update leaves binary untouched")
             return
         if installed is None:
-            _info("rtk binary unavailable or unreadable; running setup for FR24 re-provision")
+            _info("rtk binary unavailable or unreadable; running setup to re-provision")
         elif pin is None:
             _info("rtk pin unreadable; running setup to re-provision")
         else:
@@ -251,11 +249,11 @@ def pre_update():
         rc = result.returncode
         output = _surface(result)
         if rc == 0:
-            # Provisioned, idempotent skip, or warned-unavailable (Story 2.3).
+            # Provisioned, idempotent skip, or warned-unavailable.
             _info("rtk re-provision complete" + ((": " + output) if output else ""))
             return
-        # CR 3.4 F7: exit-class parity with install() (AC-04): usage (2),
-        # availability (126/127/signal), integrity (other) surface distinctly.
+        # Exit-class parity with install(): usage, availability, and
+        # integrity failures surface distinctly.
         if rc == 2:
             _warn("rtk re-provision usage error (rc=2)" + ((": " + output) if output else ""))
         elif rc in (126, 127) or rc < 0:
@@ -270,14 +268,13 @@ def pre_update():
 
 
 def uninstall():
-    """A0 uninstall hook (FR23/D10): never touches the user-owned RTK binary.
+    """A0 uninstall hook: never touches the user-owned RTK binary.
 
     A0 deletes the plugin directory itself after this hook returns:
     uninstall_plugin -> call_plugin_hook("uninstall") then delete_plugin
     (helpers/plugins.py:409-414 -> :415-444). This plugin owns no files
-    outside its directory except the user-owned binary (NFR11), so the
-    correct hook is a guarded, informative no-op - it removes nothing and
-    never raises (NFR6/D10).
+    outside its directory except the user-owned binary, so the correct hook
+    is a guarded, informative no-op - it removes nothing and never raises.
     """
     try:
         _style.info(

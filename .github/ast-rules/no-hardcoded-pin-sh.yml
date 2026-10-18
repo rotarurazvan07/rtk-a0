@@ -1,8 +1,8 @@
-# Story 3.5 AC-05 / NFR12-D5: bash reads the pin from rtk_pin.txt, never hardcodes.
+# bash reads the pin from rtk_pin.txt and never hardcodes a version.
 id: no-hardcoded-pin-in-shell
 language: bash
 severity: error
-message: "hardcoded version literal in shell - read rtk_pin.txt instead (NFR12/D5)"
+message: "hardcoded version literal in shell - read rtk_pin.txt instead"
 rule:
   kind: word
   regex: 'v[0-9]+\.[0-9]+\.[0-9]+'

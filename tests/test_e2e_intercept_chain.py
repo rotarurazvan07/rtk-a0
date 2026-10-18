@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Story 2.5 framework E2E: intercept chain with the REAL rtk binary (AC-02/03).
-
-Framework runtime (needs helpers.extension) — run under /opt/venv-a0 with
-PYTHONPATH=/a0. HOST-STATE ISOLATED (CR-2.4-D1): PATH is built explicitly
-per test, so the suite behaves identically with or without a real rtk
-installed on the container.
-"""
+"""framework E2E: intercept chain with the REAL rtk binary. Framework runtime (needs helpers.extension) — run under /opt/venv-a0 with PYTHONPATH=/a0. HOST-STATE ISOLATED: PATH is built explicitly per test, so the suite behaves identically with or without a real rtk installed on the container."""
 import importlib.util
 import os
 import shutil
@@ -32,13 +26,7 @@ def _extension():
 
 
 def test_real_delegation_compresses(tmp_path):
-    """AC-02/AC-03 + Story 3.1 AC-05/AC-06 (ADR-006 inversion): with the
-    REAL rtk resolvable, the gate delegates and mutates tool_args['code']
-    when rtk returns a usable rewrite under BOTH rewrite-available codes:
-    rc 3 = default-container behavior ('rewrite printed, allow rules do not
-    cover every command' — previously OBSERVED as a drop, now ACCEPTED per
-    ADR-006) and rc 0 with RTK_REWRITE_HOST=openclaw (rtk's documented
-    delegate mode). Mutation in both modes is the rc-3-accept pin."""
+    """+ ( inversion): with the REAL rtk resolvable, the gate delegates and mutates tool_args['code'] when rtk returns a usable rewrite under BOTH rewrite-available codes: rc 3 = default-container behavior ('rewrite printed, allow rules do not cover every command' — previously OBSERVED as a drop, now ACCEPTED per ) and rc 0 with RTK_REWRITE_HOST=openclaw (rtk's documented delegate mode). Mutation in both modes is the rc-3-accept pin."""
     ext = _extension()
     bin_dir = tmp_path / "bins"
     bin_dir.mkdir()
@@ -51,7 +39,7 @@ def test_real_delegation_compresses(tmp_path):
         agent = type("A", (), {"data": {}})()
         args = {"runtime": "terminal", "code": "git status"}
         ext.RtkIntercept(agent).execute("code_execution_tool", args)
-        # rc 3 on default container -> rewrite now applied (ADR-006)
+        # rc 3 on default container -> rewrite now applied
         assert args["code"] == "rtk git status"
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv("PATH", str(bin_dir))
@@ -64,12 +52,7 @@ def test_real_delegation_compresses(tmp_path):
 
 
 def test_real_bypass_escape_hatch_passes_through(tmp_path):
-    """Story 3.1 AC-01/AC-02 (FR17/FR4/NFR7): `rtk bypass <cmd>` matches the
-    Story 1.2 `rtk ` idempotence gate and reaches the executor unchanged —
-    even with the real binary on a controlled PATH. The plugin never strips
-    or rewrites the prefix; RTK itself runs <cmd> uncompressed and keeps it
-    in its own savings accounting (AC-03, RTK-internal). Host-state
-    isolated: skip when the real binary is absent (CR-2.4-D1)."""
+    """ `rtk bypass <cmd>` matches the `rtk ` idempotence gate and reaches the executor unchanged — even with the real binary on a controlled PATH. The plugin never strips or rewrites the prefix; RTK itself runs <cmd> uncompressed and keeps it in its own savings accounting (, RTK-internal). Host-state isolated: skip when the real binary is absent."""
     ext = _extension()
     bin_dir = tmp_path / "bins"
     bin_dir.mkdir()
@@ -85,9 +68,7 @@ def test_real_bypass_escape_hatch_passes_through(tmp_path):
 
 
 def test_real_fail_open_without_rtk(tmp_path):
-    """AC-02 fail-open with a real availability check (no rtk on the
-    controlled PATH): command passes through untouched, no subprocess
-    attempted by the extension."""
+    """fail-open with a real availability check (no rtk on the controlled PATH): command passes through untouched, no subprocess attempted by the extension."""
     ext = _extension()
     empty = tmp_path / "empty"
     empty.mkdir()
@@ -101,8 +82,7 @@ def test_real_fail_open_without_rtk(tmp_path):
 
 
 def test_real_idempotence_prefix(tmp_path):
-    """AC-03: `rtk `-prefixed commands pass through untouched even with the
-    real binary present (no delegation — no rtk rewrite of rtk)."""
+    """`rtk `-prefixed commands pass through untouched even with the real binary present (no delegation — no rtk rewrite of rtk)."""
     ext = _extension()
     bin_dir = tmp_path / "bins"
     bin_dir.mkdir()
@@ -119,13 +99,7 @@ def test_real_idempotence_prefix(tmp_path):
 
 
 def test_real_rtk_gain_passes_through(tmp_path):
-    """Story 3.2 AC-01/AC-04 (FR19, journey 4): `rtk gain` matches the
-    `rtk ` idempotence gate and reaches the executor UNCHANGED with the real
-    binary on a controlled PATH, and running it returns RTK's savings
-    dashboard (per-command + per-session) into the conversation. The plugin
-    never invokes `rtk gain` itself (architecture API table: 'not called by
-    plugin proactive') — it only proves the passthrough and surfaces the
-    output. Host-state isolated: skip when the real binary is absent."""
+    """rtk gain matches the idempotence gate and reaches the executor unchanged with the real binary on a controlled PATH; running it returns the RTK savings report into the conversation. The plugin never invokes rtk gain itself - it proves the passthrough only. Skips when the real binary is absent."""
     ext = _extension()
     bin_dir = tmp_path / "bins"
     bin_dir.mkdir()
@@ -136,8 +110,8 @@ def test_real_rtk_gain_passes_through(tmp_path):
         mp.setenv("PATH", str(bin_dir))
         agent = type("A", (), {"data": {}})()
         args = {"runtime": "terminal", "code": "rtk gain"}
-        # CR 3.2 T3: pin the idempotence gate itself, not just the outcome —
-        # with rc 3 accepted (ADR-006) rtk rewrite echoes `rtk gain`
+        # T3: pin the idempotence gate itself, not just the outcome —
+        # with rc 3 accepted rtk rewrite echoes `rtk gain`
         # unchanged, so the passthrough assert alone is vacuous. Sentinel is
         # scoped to the extension call only; the dashboard run below uses
         # the real subprocess.run again.
@@ -151,16 +125,16 @@ def test_real_rtk_gain_passes_through(tmp_path):
             ext.RtkIntercept(agent).execute("code_execution_tool", args)
         finally:
             ext.subprocess.run = _real_run
-        # AC-01/AC-04: exact command string reaches execution unchanged —
+        # The exact command string reaches execution unchanged -
         # identical to running `rtk gain` on the host shell.
         assert args["code"] == "rtk gain", "rtk gain must pass through untouched"
-        # The dashboard output returns inside the conversation (FR19).
+        # The dashboard output returns inside the conversation.
         proc = subprocess.run(
             ["rtk", "gain"], capture_output=True, text=True, encoding="utf-8", timeout=10
         )
         assert proc.returncode == 0, f"rtk gain failed: {proc.stderr}"
         if "Tokens saved" not in proc.stdout:
-            # CR 3.2 T1: fresh-container/empty-ledger host state — rtk gain
+            # T1: fresh-container/empty-ledger host state — rtk gain
             # prints 'No tracking data yet.' (rc 0); skip, never red.
             pytest.skip("rtk ledger empty on this host (no accumulated savings yet)")
         assert "RTK Token Savings" in proc.stdout, "dashboard header must be present"
@@ -169,12 +143,7 @@ def test_real_rtk_gain_passes_through(tmp_path):
 
 
 def test_real_rtk_gain_session_reduction_observable(tmp_path):
-    """Story 3.2 AC-02 (PRD success criteria, measurable outcome 1): a real
-    session shows a parseable session-token reduction >=40% and a
-    per-command table in `rtk gain` output. Assert the OBSERVABLE exists
-    and is parseable — never a hardcoded expected percentage (the RTK-owned
-    ledger accumulates from all container usage; recorded live 2026-10-17:
-    182 commands, 2.9K saved, 63.5%). Host-state isolated."""
+    """A real session shows a parseable session-token reduction and a per-command table in the rtk gain output. Assert the observable exists and parses; never pin an exact percentage, since the RTK-owned ledger accumulates from all container usage. Host-state isolated."""
     import re
 
     bin_dir = tmp_path / "bins"
@@ -190,14 +159,14 @@ def test_real_rtk_gain_session_reduction_observable(tmp_path):
     assert proc.returncode == 0, f"rtk gain failed: {proc.stderr}"
     m = re.search(r"Tokens saved:\s*\S+\s*\((\d+(?:\.\d+)?)%\)", proc.stdout)
     if not m:
-        # CR 3.2 T1/T2: fresh-container/empty-ledger host state — rtk gain
+        # T1/T2: fresh-container/empty-ledger host state — rtk gain
         # prints 'No tracking data yet.' (rc 0). The RTK-owned ledger is
         # container-global and varies with usage; skip, never red.
         pytest.skip("rtk ledger empty on this host (no session reduction observable)")
     pct = float(m.group(1))
-    # CR 3.2 T2: the >=40% target is asserted only where a session reduction
+    # T2: the >=40% target is asserted only where a session reduction
     # is observable (ledger gate above); fresh hosts skip instead of failing
-    # on a hardcoded threshold (Task 1.2: ledger state varies).
+# on a hardcoded threshold (: ledger state varies).
     assert pct >= 40.0, f"session-token reduction must meet the >=40% target, got {pct}%"
     # Per-command statistics section with at least one row.
     assert "By Command" in proc.stdout and re.search(r"\d+\.\s+\S+", proc.stdout), \

@@ -4,8 +4,7 @@ Thin fail-open adapter that routes Agent Zero terminal commands through the
 [RTK](https://github.com/rtk-ai/rtk) CLI for output compression. Every terminal
 command is delegated to `rtk rewrite` before execution; if RTK is unavailable or
 fails, your command runs unchanged. The plugin downloads and invokes the RTK
-binary — it never vendors or reimplements it (see
-[docs/licensing-boundary.md](docs/licensing-boundary.md)).
+binary — it never vendors or reimplements it.
 
 ## Install
 
@@ -46,7 +45,7 @@ RTK maintains its own savings ledger; the plugin surfaces its output unchanged.
 Read **Tokens saved** and the per-command table to see cumulative and
 per-command reductions.
 
-Measured examples from Story 2.5 dogfooding on this container (not guarantees):
+Measured examples on this container (not guarantees):
 
 | Command | Before | After | Reduction |
 | --- | --- | --- | --- |
@@ -133,13 +132,14 @@ if the installed version has drifted from the pin in `rtk_pin.txt`.
 This plugin is licensed **Apache-2.0** (see `LICENSE`). RTK itself is an
 **external BUSL-1.1 dependency**, used **orchestration-only**: the plugin
 downloads the RTK binary at setup time and invokes it as
-`rtk rewrite <command>` — it never vendors, embeds, or reimplements RTK code. Support scope: **Linux containers only** (FR28) — the
-pinned release is the x86_64 musl static Linux build. The full compliance note
-lives in [docs/licensing-boundary.md](docs/licensing-boundary.md).
+`rtk rewrite <command>` — it never vendors, embeds, or reimplements RTK code. Support scope: **Linux containers only** - the
+pinned release is the x86_64 musl static Linux build. Compliance boundary: the
+RTK engine is downloaded as a pinned, single-source binary (recorded in
+`rtk_pin.txt`) and used for orchestration only; no RTK code or RTK-owned
+savings accounting is embedded in this repository.
 
 ## Links
 
 - RTK project: https://github.com/rtk-ai/rtk
 - RTK documentation: https://www.rtk-ai.app/docs/
 - This plugin: https://github.com/rotarurazvan07/rtk-a0
-- Compliance note: [docs/licensing-boundary.md](docs/licensing-boundary.md)

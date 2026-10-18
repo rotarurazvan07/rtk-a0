@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Story 3.5 AC-05 - ast-grep CI enforcement rule contract (network-free).
-
-The pure suite parses the rule YAML files and pins their shape (ids, severity,
-regex). If the ast-grep binary exists on the host it is run live on the
-production source paths as a gated bonus verification, never a requirement.
-"""
+"""ast-grep CI enforcement rule contract (network-free). The pure suite parses the rule YAML files and pins their shape (ids, severity, regex). If the ast-grep binary exists on the host it is run live on the production source paths as a gated bonus verification, never a requirement."""
 import re
 import shutil
 import subprocess
@@ -36,7 +31,7 @@ def _rules():
 
 
 def test_ci_rule_files_exist_with_all_rules():
-    """AC-05: every pinned rule id has a single-doc YAML file (ast-grep ruleDir)."""
+    """every pinned rule id has a single-doc YAML file (ast-grep ruleDir)."""
     rules = _rules()
     missing = RULE_IDS - set(rules)
     assert not missing, f"rule ids missing: {missing}"
@@ -48,13 +43,13 @@ def test_ci_rule_files_exist_with_all_rules():
 
 
 def test_shell_true_rule_targets_subprocess_run():
-    """AC-05: shell=True rejection pattern anchors subprocess.run (D2)."""
+    """shell=True rejection pattern anchors subprocess.run."""
     rule = _rules()["no-shell-true"]
     assert "shell=True" in str(rule.get("rule")), "shell=True rule must anchor the pattern"
 
 
 def test_version_literal_rules_match_semver_shape():
-    """AC-05: the hardcoded-pin rules match the vX.Y.Z shape (NFR12)."""
+    """the hardcoded-pin rules match the vX.Y.Z shape."""
     rules = _rules()
     py_re = rules["no-hardcoded-pin-outside-pin-file"]["rule"]["regex"]
     sh_re = rules["no-hardcoded-pin-in-shell"]["rule"]["regex"]
@@ -63,7 +58,7 @@ def test_version_literal_rules_match_semver_shape():
 
 
 def test_ast_grep_live_scan_when_binary_present():
-    """AC-05 gated live proof: ast-grep on PATH scans production source clean."""
+    """gated live proof: ast-grep on PATH scans production source clean."""
     sg = shutil.which("ast-grep") or shutil.which("sg")
     if sg is None:
         import pytest
