@@ -16,3 +16,5 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 _bmad/
+.roo/
+.neuralmind/

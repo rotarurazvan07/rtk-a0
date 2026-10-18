@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  # Gates every pull request targeting the integration branch.
+  pull_request:
+    branches: [main]
+  # Runs again after a PR is merged (and for any direct update to main).
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  # The plugin is normally loaded by Agent Zero.  The test suite imports its
+  # small extension API, so provide the contract it exercises in CI.
+  A0_FRAMEWORK_ROOT: ${{ runner.temp }}/a0-framework
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests and coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest pytest-cov PyYAML
+
+      - name: Provide the Agent Zero extension test shim
+        shell: bash
+        run: |
+          mkdir -p "$A0_FRAMEWORK_ROOT/helpers"
+          touch "$A0_FRAMEWORK_ROOT/helpers/__init__.py"
+          cat > "$A0_FRAMEWORK_ROOT/helpers/extension.py" <<'PY'
+          class Extension:
+              def __init__(self, agent=None):
+                  self.agent = agent
+          PY
+          cat > "$A0_FRAMEWORK_ROOT/helpers/modules.py" <<'PY'
+          import importlib.util
+          from pathlib import Path
+
+          def load_classes_from_folder(folder, _pattern, base_class):
+              classes = []
+              for path in Path(folder).glob("*.py"):
+                  spec = importlib.util.spec_from_file_location(path.stem, path)
+                  module = importlib.util.module_from_spec(spec)
+                  spec.loader.exec_module(module)
+                  classes.extend(
+                      value for value in vars(module).values()
+                      if isinstance(value, type)
+                      and issubclass(value, base_class)
+                      and value is not base_class
+                  )
+              return classes
+          PY
+
+      - name: Run tests with a 95% coverage gate
+        run: >-
+          python -m pytest
+          --cov=hooks.py
+          --cov=extensions/python/tool_execute_before/_10_rtk_intercept.py
+          --cov-report=term-missing
+          --cov-fail-under=95
