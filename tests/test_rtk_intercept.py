@@ -809,7 +809,14 @@ def test_parallel_worker_processes_independent_outcomes(tmp_path, monkeypatch):
     script = tmp_path / "worker.py"
     script.write_text(_WORKER_SCRIPT)
 
-    env = dict(os.environ, PYTHONPATH="/a0", A0_FRAMEWORK_ROOT=os.environ.get("A0_FRAMEWORK_ROOT", "/a0"))
+    # The worker imports the extension module, which does
+    # `from helpers.extension import Extension` at module level. Resolve the
+    # framework root from this process's environment (CI exports
+    # A0_FRAMEWORK_ROOT=/tmp/a0-framework) instead of hardcoding a path that
+    # only exists on a dev box - a stale literal makes the child fail with
+    # ModuleNotFoundError: No module named 'helpers'.
+    framework_root = os.environ.get("A0_FRAMEWORK_ROOT", "/a0")
+    env = dict(os.environ, PYTHONPATH=framework_root, A0_FRAMEWORK_ROOT=framework_root)
     procs = [
         subprocess.run(
             [sys.executable, str(script), _plugin_root_str(), cmd],

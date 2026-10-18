@@ -70,7 +70,12 @@ def test_name_matches_hub_pattern():
     name = manifest.get("name", "")
     assert NAME_RE.match(name), f"name {name!r} must match ^[a-z0-9_]+$"
     assert name == "rtk_a0", "name must be rtk_a0"
-    assert PLUGIN_ROOT.name == "rtk_a0", "plugin dir must be rtk_a0"
+    # The checkout directory follows the repo slug, which is hyphenated
+    # (CI: .../rtk-a0); the installer contract is name == directory modulo
+    # that separator, so normalise before comparing.
+    assert PLUGIN_ROOT.name.replace("-", "_") == "rtk_a0", (
+        f"plugin dir {PLUGIN_ROOT.name!r} must be rtk_a0 modulo -/_"
+    )
 
 
 def test_description_states_install_and_uninstall_behavior():

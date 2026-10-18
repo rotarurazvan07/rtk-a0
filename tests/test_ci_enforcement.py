@@ -57,9 +57,33 @@ def test_version_literal_rules_match_semver_shape():
     assert re.search(sh_re, "v1.0.1"), "bash rule regex must match vN.N.N"
 
 
+def _ast_grep_binary() -> str | None:
+    """Resolve a REAL ast-grep binary, or None.
+
+    `sg` alone is ambiguous: ubuntu-latest ships shadow-utils' /usr/bin/sg
+    (execute a command as another group), which has no `scan` subcommand and
+    fails with "group 'scan' does not exist". A `--version` probe tells the
+    two apart before any scan is attempted.
+    """
+    for candidate in (shutil.which("ast-grep"), shutil.which("sg")):
+        if not candidate:
+            continue
+        try:
+            proc = subprocess.run(
+                [candidate, "--version"],
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if proc.returncode == 0 and "ast-grep" in f"{proc.stdout}{proc.stderr}".lower():
+            return candidate
+    return None
+
+
 def test_ast_grep_live_scan_when_binary_present():
     """gated live proof: ast-grep on PATH scans production source clean."""
-    sg = shutil.which("ast-grep") or shutil.which("sg")
+    sg = _ast_grep_binary()
     if sg is None:
         import pytest
         pytest.skip("ast-grep binary not on PATH - pure YAML contract pins the rule")
