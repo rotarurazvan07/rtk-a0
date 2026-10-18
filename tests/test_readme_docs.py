@@ -1,8 +1,4 @@
-"""Story 3.6 — README documentation validation (AC-01..AC-05).
-
-Pure venv, network-free: every check reads local files only. The README is the
-deliverable; these tests are the executable acceptance contract.
-"""
+"""README documentation validation (.). Pure venv, network-free: every check reads local files only. The README is the deliverable; these tests are the executable acceptance contract."""
 
 import re
 from pathlib import Path
@@ -14,7 +10,7 @@ README = PLUGIN_ROOT / "README.md"
 
 
 def _readme_text() -> str:
-    # AC-01: the root README.md is the story deliverable and must exist
+    # the root README.md is the story deliverable and must exist
     assert README.exists(), "root README.md missing — story deliverable absent"
     return README.read_text(encoding="utf-8")
 
@@ -24,7 +20,7 @@ def _headings(text: str) -> str:
     return "\n".join(line for line in text.splitlines() if line.lstrip().startswith("#"))
 
 
-# --- AC-01: install paths, automatic setup, restart, auto-download, warn-not-fail ---
+# ---: install paths, automatic setup, restart, auto-download, warn-not-fail ---
 
 def test_ac01_readme_exists_at_root():
     assert README.exists()
@@ -61,7 +57,7 @@ def test_ac01_documents_warn_not_fail():
     assert "without" in low or "agent still works" in low or "keeps working" in low
 
 
-# --- AC-02: verify savings via rtk gain ---
+# ---: verify savings via rtk gain ---
 
 def test_ac02_documents_rtk_gain_verification():
     text = _readme_text()
@@ -69,7 +65,7 @@ def test_ac02_documents_rtk_gain_verification():
     assert "token" in text.lower() or "saved" in text.lower()
 
 
-# --- AC-03: bypass escape hatch + fail-open guarantee prominence ---
+# ---: bypass escape hatch + fail-open guarantee prominence ---
 
 def test_ac03_documents_rtk_bypass_escape_hatch():
     assert "rtk bypass" in _readme_text()
@@ -89,7 +85,7 @@ def test_ac03_bypass_is_prominent_heading_or_bold():
     assert prominent, "rtk bypass must be a prominent heading or bold callout"
 
 
-# --- AC-04: licensing + support statement ---
+# ---: licensing + support statement ---
 
 def test_ac04_states_plugin_apache_license():
     low = _readme_text().lower()
@@ -118,7 +114,7 @@ def test_ac04_references_licensing_doc():
     assert (PLUGIN_ROOT / "docs" / "licensing-boundary.md").exists()
 
 
-# --- AC-05: troubleshooting section — warning, agent-works, remedy ---
+# ---: troubleshooting section — warning, agent-works, remedy ---
 
 def test_ac05_has_troubleshooting_section():
     assert "troubleshoot" in _headings(_readme_text()).lower()
@@ -138,7 +134,7 @@ def test_ac05_lists_rerun_setup_remedy():
     text = _readme_text()
     assert "setup.sh" in text
     # the remedy must be a form setup.sh actually accepts (no invented flags —
-    # CR 3.6 H-1: README previously documented an invalid --install-dir flag)
+# README previously documented an invalid --install-dir flag)
     assert "--install-dir" not in text, "invalid setup.sh flag documented"
     assert re.search(r"(re-run|rerun|bash scripts/setup\.sh|scripts/setup\.sh)", text)
     env_form = re.search(r"RTK_INSTALL_DIR=/[^\s]+ bash scripts/setup\.sh", text)
@@ -146,7 +142,7 @@ def test_ac05_lists_rerun_setup_remedy():
     assert env_form or plain_form, "remedy must be a no-arg or env-var setup.sh run"
 
 
-# --- Honesty constraints (Story 3.2/3.3 lessons — enforced across surfaces) ---
+# --- Honesty constraints (/3.3 lessons — enforced across surfaces) ---
 
 def test_honesty_no_flat_compression_range_claim():
     text = _readme_text()
@@ -164,7 +160,7 @@ def test_honesty_frames_savings_as_measured_not_guaranteed():
 
 
 def test_fail_open_acknowledges_rc3_acceptance():
-    # ADR-006 / Story 3.1: rtk rc 3 is applied as a rewrite; the fail-open
+    # rtk rc 3 is applied as a rewrite; the fail-open
     # enumeration must not claim every non-zero exit falls back to original
     low = _readme_text().lower()
     assert ("rc 3" in low) or ("allow-rules" in low), (

@@ -9,12 +9,12 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_manifest_exists():
-    """AC-03: plugin.yaml exists at root."""
+    """plugin.yaml exists at root."""
     assert (PLUGIN_ROOT / "plugin.yaml").exists(), "plugin.yaml missing"
 
 
 def test_manifest_pinned_fields():
-    """AC-03: manifest contains exact pinned fields."""
+    """manifest contains exact pinned fields."""
     manifest_path = PLUGIN_ROOT / "plugin.yaml"
     with open(manifest_path) as f:
         data = yaml.safe_load(f)
@@ -24,9 +24,9 @@ def test_manifest_pinned_fields():
     assert "title" in data and data["title"], "title missing"
     assert "description" in data and data["description"], "description missing"
     assert data["version"] == "1.0.0", f"version mismatch: {data.get('version')}"
-    # Story 3.3 supersedes the Story 1.1 off-by-default assumption: FR20 requires
+    # supersedes the off-by-default assumption: requires
     # zero-config default-on once setup auto-provisions the binary (hooks.install
-    # runs scripts/setup.sh on plugin install — Story 2.4).
+    # runs scripts/setup.sh on plugin install —).
     assert data["always_enabled"] is True, "always_enabled must be true (FR20 default-on, Story 3.3)"
     assert data.get("per_project_config") is False, "per_project_config must be false"
     assert data.get("per_agent_config") is False, "per_agent_config must be false"
@@ -34,7 +34,7 @@ def test_manifest_pinned_fields():
 
 
 def test_pin_file():
-    """AC-04: rtk_pin.txt contains exactly v1.0.1."""
+    """rtk_pin.txt contains exactly v1.0.1."""
     pin_path = PLUGIN_ROOT / "rtk_pin.txt"
     assert pin_path.exists(), "rtk_pin.txt missing"
     content = pin_path.read_text().strip()
@@ -45,7 +45,7 @@ def test_pin_file():
 
 
 def test_license_apache2():
-    """AC-05: LICENSE is Apache-2.0 (not MIT)."""
+    """LICENSE is Apache-2.0 (not MIT)."""
     license_path = PLUGIN_ROOT / "LICENSE"
     assert license_path.exists(), "LICENSE missing"
     content = license_path.read_text()
@@ -54,7 +54,7 @@ def test_license_apache2():
 
 
 def test_no_rtk_source_or_binaries():
-    """AC-05/FR25: zero RTK source or binaries in repo."""
+    """zero RTK source or binaries in repo."""
     # Walk plugin root, ensure no rtk binary blobs or source
     for root, dirs, files in os.walk(PLUGIN_ROOT):
         # Skip .git, __pycache__, .a0proj, .serena
@@ -70,17 +70,17 @@ def test_no_rtk_source_or_binaries():
 
 
 def test_hooks_stub_exists():
-    """AC-05: hooks.py stub exists."""
+    """hooks.py stub exists."""
     assert (PLUGIN_ROOT / "hooks.py").exists(), "hooks.py missing"
 
 
 def test_setup_sh_placeholder():
-    """AC-05: scripts/setup.sh placeholder exists."""
+    """scripts/setup.sh placeholder exists."""
     assert (PLUGIN_ROOT / "scripts" / "setup.sh").exists(), "scripts/setup.sh missing"
 
 
 def test_gitignore_excludes_workspace():
-    """AC-05: .gitignore excludes workspace metadata."""
+    """gitignore excludes workspace metadata."""
     gitignore = PLUGIN_ROOT / ".gitignore"
     assert gitignore.exists(), ".gitignore missing"
     content = gitignore.read_text()

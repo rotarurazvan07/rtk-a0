@@ -38,9 +38,7 @@ def test_rtk_intercept_is_extension_subclass():
 
 
 def test_framework_loader_discovers_rtk_intercept():
-    """AC-01: registration smoke test — the framework's own folder loader
-    (helpers.modules.load_classes_from_folder, used by _get_extension_classes)
-    discovers RtkIntercept as an Extension subclass from the named extension folder."""
+    """registration smoke test — the framework's own folder loader (helpers.modules.load_classes_from_folder, used by _get_extension_classes) discovers RtkIntercept as an Extension subclass from the named extension folder."""
     from helpers.extension import Extension
     from helpers import modules
     
@@ -51,7 +49,7 @@ def test_framework_loader_discovers_rtk_intercept():
 
 
 def test_no_op_execute_leaves_tool_args_unchanged():
-    """AC-02: execute() is a no-op — leaves tool_args dict unchanged."""
+    """execute is a no-op — leaves tool_args dict unchanged."""
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "_10_rtk_intercept", EXT_DIR / "_10_rtk_intercept.py"
@@ -68,13 +66,13 @@ def test_no_op_execute_leaves_tool_args_unchanged():
     # the mutable tool args into the extension.
     ext.execute(tool_name="code_execution_tool", tool_args=tool_args)
     
-    # AC-02: the dict object and its contents must be untouched (no-op).
+    # the dict object and its contents must be untouched (no-op).
     assert tool_args == original, "execute() must not modify tool_args"
     assert tool_args["code"] == original["code"], "execute() must not mutate tool_args['code']"
 
 
 def test_no_op_execute_spawns_no_subprocess():
-    """AC-02: execute() spawns no subprocess."""
+    """execute spawns no subprocess."""
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "_10_rtk_intercept", EXT_DIR / "_10_rtk_intercept.py"
@@ -90,7 +88,7 @@ def test_no_op_execute_spawns_no_subprocess():
 
 
 def test_no_op_execute_writes_no_files():
-    """AC-02: execute() writes no files."""
+    """execute writes no files."""
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "_10_rtk_intercept", EXT_DIR / "_10_rtk_intercept.py"
@@ -100,10 +98,10 @@ def test_no_op_execute_writes_no_files():
     
     ext = module.RtkIntercept(agent=None)
     
-    # Snapshot directory state before. CR 1.5: exclude generated runner
+    # Snapshot directory state before.: exclude generated runner
     # artifacts (.pytest_cache/__pycache__) -- a concurrent pytest run writes
     # them under PLUGIN_ROOT and trips an all-inclusive snapshot (reproduced
-    # during CR 1.5 verification runs); they are not plugin writes, which is
+    # during verification runs); they are not plugin writes, which is
     # the property this no-op pin exists to prove.
     def _plugin_files():
         return {
@@ -121,7 +119,7 @@ def test_no_op_execute_writes_no_files():
     # No file modifications (same set of mtimes)
     assert before == after, "execute() must not create or modify any files"
 
-# ===== Story 1.2: Terminal-Command Gating with Idempotence =====
+# =====: Terminal-Command Gating with Idempotence =====
 
 def _load_ext():
     """Load the extension module; return an instance bound to no agent."""
@@ -135,7 +133,7 @@ def _load_ext():
 
 
 def test_gate_non_code_execution_tool_skips():
-    """AC-01: tool_name != code_execution_tool -> return immediately, zero subprocess."""
+    """tool_name != code_execution_tool -> return immediately, zero subprocess."""
     ext = _load_ext()
     with patch("subprocess.run") as mock_run:
         ext.execute(tool_name="some_other_tool", tool_args={"code": "echo hello"})
@@ -143,7 +141,7 @@ def test_gate_non_code_execution_tool_skips():
 
 
 def test_gate_non_terminal_runtime_passes_through():
-    """AC-02: code_execution_tool with runtime != terminal -> code payload unchanged."""
+    """code_execution_tool with runtime != terminal -> code payload unchanged."""
     ext = _load_ext()
     for runtime in ("python", "nodejs", "output", "invalid", None, ""):
         tool_args = {"code": "print('hello')", "runtime": runtime, "tool_name": "code_execution_tool"}
@@ -155,7 +153,7 @@ def test_gate_non_terminal_runtime_passes_through():
 
 
 def test_gate_invalid_code_payload_returns_unchanged():
-    """AC-03: code None/empty/whitespace/non-string -> no error, args unchanged."""
+    """code None/empty/whitespace/non-string -> no error, args unchanged."""
     ext = _load_ext()
     for code in (None, "", "   ", "\t\n", 123, [], {}):
         tool_args = {"code": code, "runtime": "terminal", "tool_name": "code_execution_tool"}
@@ -168,7 +166,7 @@ def test_gate_invalid_code_payload_returns_unchanged():
 
 
 def test_gate_rtk_prefixed_command_zero_subprocess():
-    """AC-04: stripped form starts with 'rtk ' -> pass through untouched, zero subprocess."""
+    """stripped form starts with 'rtk ' -> pass through untouched, zero subprocess."""
     ext = _load_ext()
     for cmd in ("rtk git status", "rtk rewrite echo hi", "rtk bypass cargo test", "  rtk gain", "\trtk rewrite ls"):
         tool_args = {"code": cmd, "runtime": "terminal", "tool_name": "code_execution_tool"}
@@ -181,8 +179,7 @@ def test_gate_rtk_prefixed_command_zero_subprocess():
 
 
 def test_gate_exact_equality_and_rtk_git_status_zero_subprocess():
-    """AC-05: exact equality gating (D8); mocked subprocess counter asserts zero
-    invocations for 'rtk git status'."""
+    """exact equality gating; mocked subprocess counter asserts zero invocations for 'rtk git status'."""
     ext = _load_ext()
 
     # rtk-prefixed terminal command -> idempotence gate -> zero subprocess invocations
@@ -208,15 +205,13 @@ def test_gate_exact_equality_and_rtk_git_status_zero_subprocess():
 
 
 def test_gate_contract_source_structure():
-    """AC-05/D8: extension implements exactly the pinned gate conditions,
-    in the architecture guard order 1->4 (tool identity, runtime, payload,
-    idempotence)."""
+    """The extension implements exactly the pinned gate conditions in guard order: tool identity, runtime, payload, idempotence."""
     src = (EXT_DIR / "_10_rtk_intercept.py").read_text()
     guards = [
-        'tool_name != "code_execution_tool"',      # guard 1: tool identity (D8, FR3)
-        'tool_args.get("runtime") != "terminal"',  # guard 2: terminal runtime (D8, FR3)
+        'tool_name != "code_execution_tool"',      # guard 1: tool identity
+        'tool_args.get("runtime") != "terminal"',  # guard 2: terminal runtime
         'isinstance(code, str)',                   # guard 3: payload sanity
-        'startswith("rtk ")',                     # guard 4: idempotence (FR4, NFR7)
+        'startswith("rtk ")',                     # guard 4: idempotence
     ]
     pos = -1
     for g in guards:
@@ -225,7 +220,7 @@ def test_gate_contract_source_structure():
         assert i > pos, f"guard order violated: {g!r} must come after the previous guard"
         pos = i
 
-# ===== Story 1.3: RTK Rewrite Delegation & Command Mutation =====
+# =====: RTK Rewrite Delegation & Command Mutation =====
 # Mock patch target: the extension imports `subprocess` (module) and calls
 # subprocess.run(...) -> patch where looked up: 'subprocess.run' stdlib attr.
 import subprocess as _subprocess
@@ -239,9 +234,7 @@ def _fake_run(rc=0, stdout=""):
 
 
 def test_delegation_invokes_rtk_rewrite_argv_list():
-    """AC-01: rc==0 + different stdout -> subprocess.run called with argv list
-    ['rtk','rewrite',cmd], capture_output, text, timeout=RTK_REWRITE_TIMEOUT;
-    no shell=True."""
+    """rc==0 + different stdout -> subprocess.run called with argv list ['rtk','rewrite',cmd], capture_output, text, timeout=RTK_REWRITE_TIMEOUT; no shell=True."""
     ext = _load_ext()
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
     with patch("shutil.which", return_value="/usr/local/bin/rtk"), patch(
@@ -258,8 +251,7 @@ def test_delegation_invokes_rtk_rewrite_argv_list():
 
 
 def test_mutation_on_success():
-    """AC-02: rc==0, non-empty stdout != original -> tool_args['code'] mutated
-    to stripped rewritten command; no other key written."""
+    """rc==0, non-empty stdout != original -> tool_args['code'] mutated to stripped rewritten command; no other key written."""
     ext = _load_ext()
     tool_args = {
         "code": "git status",
@@ -278,20 +270,19 @@ def test_mutation_on_success():
 
 
 def test_no_mutation_on_nonzero_rc():
-    """AC-03: rc not in (0, 3) (here rc 1: no rewrite) -> no mutation even
-    with stdout (FR5/FR7; ADR-006 amended rule supersedes 'rc != 0')."""
+    """rc outside 0 and 3 (here rc 1: no rewrite) never mutates, even with stdout."""
     ext = _load_ext()
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
     with patch("shutil.which", return_value="/usr/local/bin/rtk"), patch(
         "subprocess.run", side_effect=_fake_run(rc=1, stdout="rtk git status")
     ) as run:
         ext.execute(tool_name="code_execution_tool", tool_args=tool_args)
-    run.assert_called_once()  # CR 1.4: delegation must be reached (no vacuous pass on rtk-absent hosts)
+    run.assert_called_once()  # : delegation must be reached (no vacuous pass on rtk-absent hosts)
     assert tool_args["code"] == "git status", "rc!=0 must not mutate"
 
 
 def test_no_mutation_on_empty_stdout():
-    """AC-03: rc==0 + empty/whitespace stdout -> no mutation (FR5/FR7)."""
+    """rc 0 with empty or whitespace stdout does not mutate."""
     ext = _load_ext()
     for out in ("", "   \n\t"):
         tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
@@ -299,27 +290,24 @@ def test_no_mutation_on_empty_stdout():
             "subprocess.run", side_effect=_fake_run(rc=0, stdout=out)
         ) as run:
             ext.execute(tool_name="code_execution_tool", tool_args=tool_args)
-        run.assert_called_once()  # CR 1.4: delegation must be reached
+        run.assert_called_once()  # : delegation must be reached
         assert tool_args["code"] == "git status", f"empty stdout {out!r} must not mutate"
 
 
 def test_no_mutation_when_rtk_decides_no_compression():
-    """AC-03/FR5: rc==0 + stdout identical to original -> original executes
-    exactly as written (no mutation)."""
+    """rc==0 + stdout identical to original -> original executes exactly as written (no mutation)."""
     ext = _load_ext()
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
     with patch("shutil.which", return_value="/usr/local/bin/rtk"), patch(
         "subprocess.run", side_effect=_fake_run(rc=0, stdout="git status\n")
     ) as run:
         ext.execute(tool_name="code_execution_tool", tool_args=tool_args)
-    run.assert_called_once()  # CR 1.4: delegation must be reached
+    run.assert_called_once()  # : delegation must be reached
     assert tool_args["code"] == "git status", "identical stdout must not mutate"
 
 
 def test_rewritten_rtk_prefixed_command_passes_through_untouched():
-    """AC-04/NFR3: RTK-rewritten commands are rtk-prefixed; the idempotence
-    gate catches them on the next dispatch -> zero subprocess, no re-compression
-    loop. The rewritten form also exercises AC-02's mutation output shape."""
+    """RTK-rewritten commands are rtk-prefixed; the idempotence gate catches them on the next dispatch -> zero subprocess, no re-compression loop. The rewritten form also exercises 's mutation output shape."""
     ext = _load_ext()
     # Round 1: plain command gets rewritten to an rtk-prefixed command.
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
@@ -336,10 +324,7 @@ def test_rewritten_rtk_prefixed_command_passes_through_untouched():
 
 
 def test_dispatch_paths_uniform_mutation():
-    """AC-05/FR2: identical rewrite behavior regardless of which A0 dispatch
-    site invokes the hook (agent.py:1219 single-tool, agent.py:1499 message
-    loop, parallel_tools.py:576 worker) — the sites differ only in caller, not
-    in the hook contract; each passes tool_name kwarg + mutable tool_args."""
+    """identical rewrite behavior regardless of which A0 dispatch site invokes the hook (agent.py:1219 single-tool, agent.py:1499 message loop, parallel_tools.py:576 worker) — the sites differ only in caller, not in the hook contract; each passes tool_name kwarg + mutable tool_args."""
     ext = _load_ext()
     for site in ("agent.py:1219", "agent.py:1499", "parallel_tools.py:576"):
         tool_args = {"code": "cargo test", "runtime": "terminal", "tool_name": "code_execution_tool"}
@@ -352,7 +337,7 @@ def test_dispatch_paths_uniform_mutation():
 
 
 def test_timeout_constant_pinned():
-    """AC-01/D7/NFR1: RTK_REWRITE_TIMEOUT == 2.0 module constant."""
+    """RTK_REWRITE_TIMEOUT == 2.0 module constant."""
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "_10_rtk_intercept", EXT_DIR / "_10_rtk_intercept.py"
@@ -365,8 +350,7 @@ def test_timeout_constant_pinned():
 
 
 def test_no_shell_true_and_single_mutation_point():
-    """AC-01/AC-02 structural: shell=True never appears in plugin source;
-    tool_args['code'] = written at exactly one place (single mutation point)."""
+    """structural: shell=True never appears in plugin source; tool_args['code'] = written at exactly one place (single mutation point)."""
     tests_dir = PLUGIN_ROOT / "tests"
     for pyfile in PLUGIN_ROOT.rglob("*.py"):
         if tests_dir in pyfile.parents:  # skip test sources (they name the anti-pattern)
@@ -379,10 +363,7 @@ def test_no_shell_true_and_single_mutation_point():
 
 
 def test_padded_original_no_compression_reply_no_mutation():
-    """AC-03 (CR 1.3 regression): original carrying trailing whitespace + rtk
-    echoing the same command (with trailing newline) must NOT mutate — the
-    no-op reply executes the original exactly as written. Regression pin for
-    the equality gate normalizing both sides (code.strip() == rewritten)."""
+    """An original with trailing whitespace echoed back by rtk must not mutate: the no-op reply executes the original exactly as written. Pins the equality gate normalizing both sides."""
     ext = _load_ext()
     for original in ("git status", "git status\n", "  git status  \n"):
         tool_args = {"code": original, "runtime": "terminal", "tool_name": "code_execution_tool"}
@@ -390,13 +371,12 @@ def test_padded_original_no_compression_reply_no_mutation():
             "subprocess.run", side_effect=_fake_run(rc=0, stdout="git status\n")
         ) as run:
             ext.execute(tool_name="code_execution_tool", tool_args=tool_args)
-        run.assert_called_once()  # CR 1.4: delegation must be reached
+        run.assert_called_once()  # : delegation must be reached
         assert tool_args["code"] == original, f"whitespace-padded original must execute as written: {original!r}"
 
 
 def test_delegation_exception_fails_open():
-    """AC-03/D3 minimal safety (bridging to Story 1.4): subprocess exception
-    (e.g. TimeoutExpired/OSError) leaves tool_args untouched."""
+    """A subprocess exception (timeout or OSError) leaves tool_args untouched."""
     ext = _load_ext()
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
     with patch("shutil.which", return_value="/usr/local/bin/rtk"), patch(
@@ -406,7 +386,7 @@ def test_delegation_exception_fails_open():
     assert tool_args["code"] == "git status", "exception path must fail open"
 
 
-# ===== Story 1.4: Fail-Open Guards & Unavailability Warning =====
+# =====: Fail-Open Guards & Unavailability Warning =====
 
 import shutil
 
@@ -440,9 +420,7 @@ def _load_ext_with_agent(agent):
 
 
 def test_binary_missing_warns_once_and_skips():
-    """AC-01/D3 case 5/FR6/FR10/D9: shutil.which(\"rtk\") -> None -> no
-    subprocess, original command unchanged, rtk_a0_missing_warned latched,
-    exactly one user-visible warning."""
+    """A missing binary skips delegation: no subprocess, original command unchanged, the session latch is set, exactly one user-visible warning."""
     agent = _StubAgent()
     ext = _load_ext_with_agent(agent)
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
@@ -455,8 +433,7 @@ def test_binary_missing_warns_once_and_skips():
 
 
 def test_binary_missing_warn_once_silent_afterwards():
-    """AC-01/D9: second and subsequent misses in the same session skip
-    silently — flag stays latched, zero additional warnings."""
+    """second and subsequent misses in the same session skip silently — flag stays latched, zero additional warnings."""
     agent = _StubAgent()
     ext = _load_ext_with_agent(agent)
     with patch("shutil.which", return_value=None):
@@ -468,8 +445,7 @@ def test_binary_missing_warn_once_silent_afterwards():
 
 
 def test_binary_missing_no_agent_silent_skip():
-    """AC-02/D9: self.agent is None while rtk missing -> silent skip, no
-    error, no flag write, no subprocess (graceful degradation)."""
+    """self.agent is None while rtk missing -> silent skip, no error, no flag write, no subprocess (graceful degradation)."""
     ext = _load_ext()  # agent=None
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
     with patch("shutil.which", return_value=None):
@@ -478,8 +454,7 @@ def test_binary_missing_no_agent_silent_skip():
 
 
 def test_timeout_expired_fails_open():
-    """AC-05/D3 case 6/FR8/NFR1: TimeoutExpired after RTK_REWRITE_TIMEOUT ->
-    original command unchanged (distinct except branch documents the pin)."""
+    """A timeout at the rewrite bound leaves the original command unchanged."""
     ext = _load_ext()
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
     with patch("shutil.which", return_value="/usr/local/bin/rtk"), patch(
@@ -490,8 +465,7 @@ def test_timeout_expired_fails_open():
 
 
 def test_os_error_fails_open():
-    """AC-06/D3 case 7/FR9: OSError (e.g. E2BIG oversized argv) caught by the
-    catch-all -> original command unchanged, no agent interruption."""
+    """An OSError (e.g. oversized argv) is caught by the guard: original command unchanged, no agent interruption."""
     ext = _load_ext()
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
     with patch("shutil.which", return_value="/usr/local/bin/rtk"), patch(
@@ -502,8 +476,7 @@ def test_os_error_fails_open():
 
 
 def test_generic_exception_fails_open():
-    """AC-06/D3 case 7/FR9: any other exception caught by the guard ->
-    original command unchanged, no crash, no agent interruption."""
+    """Any other exception is caught by the guard: original command unchanged, no crash, no agent interruption."""
     ext = _load_ext()
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
     with patch("shutil.which", return_value="/usr/local/bin/rtk"), patch(
@@ -514,15 +487,13 @@ def test_generic_exception_fails_open():
 
 
 def test_full_guard_chain_fail_open_invariant():
-    """AC-07/NFR13/D3: no failure mode mutates the original command — cases
-    1-7, 9-10 leave it unchanged in 100% of runs; case 8 (rc 0/3 + non-empty
-    differing stdout) is the single sanctioned mutation (ADR-006)."""
+    """no failure mode mutates the original command — cases 1-7, 9-10 leave it unchanged in 100% of runs; case 8 (rc 0/3 + non-empty differing stdout) is the single sanctioned mutation."""
     original = "cargo test"
 
     def _args():
         return {"code": original, "runtime": "terminal", "tool_name": "code_execution_tool"}
 
-    # Cases 1-4 (Story 1.2 gates): no subprocess, untouched payload.
+    # Cases 1-4 (gates): no subprocess, untouched payload.
     ext = _load_ext()
     t = _args()
     with patch("subprocess.run") as m:
@@ -571,8 +542,8 @@ def test_full_guard_chain_fail_open_invariant():
             ext.execute(tool_name="code_execution_tool", tool_args=t)
         assert t["code"] == original, f"exception {exc!r} must fail open"
 
-    # Cases 8-10 (Story 1.3 delegation outcomes): untouched payload EXCEPT
-    # case 8's sanctioned rc-0/3 rewrite, asserted in the branch below (ADR-006).
+    # Cases 8-10 (delegation outcomes): untouched payload EXCEPT
+    # case 8's sanctioned rc-0/3 rewrite, asserted in the branch below.
     for rc, stdout in ((1, ""), (1, "err"), (0, ""), (0, "   \n"), (0, original + "\n"), (0, "rtk " + original)):
         t = _args()
         with patch("shutil.which", return_value="/usr/local/bin/rtk"), patch(
@@ -586,10 +557,7 @@ def test_full_guard_chain_fail_open_invariant():
 
 
 def test_guard_contract_source_structure():
-    """Structural pins (AC-01/02/05/06): shutil availability guard present in
-    D3 order (after idempotence, before delegation); TimeoutExpired branch
-    precedes catch-all; encoding='utf-8' pinned; warn-once flag written at
-    exactly one place; availability guard precedes the try block."""
+    """Structural pins (/05/06): shutil availability guard present in order (after idempotence, before delegation); TimeoutExpired branch precedes catch-all; encoding='utf-8' pinned; warn-once flag written at exactly one place; availability guard precedes the try block."""
     src = (EXT_DIR / "_10_rtk_intercept.py").read_text()
     assert "import shutil" in src, "shutil import required for availability guard"
     assert "shutil.which" in src, "availability guard must call shutil.which"
@@ -605,8 +573,7 @@ def test_guard_contract_source_structure():
 
 
 def test_delegation_kwargs_include_utf8_encoding():
-    """AC-06 adjacent pin (CR 1.3 defer): the single delegation call carries
-    encoding='utf-8' alongside argv list, capture, text, timeout constant."""
+    """The single delegation call pins utf-8 decoding alongside the argv list, capture, text mode, and the timeout constant."""
     ext = _load_ext()
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
     with patch("shutil.which", return_value="/usr/local/bin/rtk"), patch(
@@ -620,9 +587,7 @@ def test_delegation_kwargs_include_utf8_encoding():
 
 
 def test_missing_binary_warn_log_failure_still_fails_open():
-    """AC-01/AC-06 (CR 1.4): the best-effort notification cannot break the agent.
-    A stub agent whose context.log.log raises must still skip silently with
-    tool_args unchanged (the _warn_unavailable guard swallows the failure)."""
+    """the best-effort notification cannot break the agent. A stub agent whose context.log.log raises must still skip silently with tool_args unchanged (the _warn_unavailable guard swallows the failure)."""
     agent = _StubAgent()
 
     def _boom(**kwargs):
@@ -636,8 +601,8 @@ def test_missing_binary_warn_log_failure_still_fails_open():
     assert tool_args["code"] == "git status", "broken log surface must fail open"
     assert agent.data["rtk_a0_missing_warned"] is True, "latch set before the log attempt"
 
-# ===== Story 1.5: Fail-Open & Parallel Re-Entrancy Test Suite =====
-# Consolidation + extension of the Story 1.2-1.4 coverage into the D3
+# =====: Fail-Open & Parallel Re-Entrancy Test Suite =====
+# Consolidation + extension of the -1.4 coverage into the
 # 10-case matrix, happy-path mutation isolation, parallel/re-entrancy
 # simulation (threads + processes), a real-stub integration harness, and
 # the licensing-boundary structural pin. EXISTING TESTS ABOVE ARE UNCHANGED.
@@ -650,12 +615,11 @@ import sys
 import threading
 import time as _time
 
-import pytest  # CR 1.5: live OS-limit control (E2BIG) uses pytest.raises
+import pytest  # : live OS-limit control (E2BIG) uses pytest.raises
 
 
 def _d3_matrix_mutations():
-    """AC-01/D3/NFR13: gate mutations for D3 cases 1-4 in architecture order.
-    Each entry mutates a valid baseline dict so exactly ONE gate fires."""
+    """Gate mutations in guard order; each entry mutates a valid baseline dict so exactly one gate fires."""
     return [
         ("wrong_tool", lambda t: t.update({"tool_name": "some_other_tool"})),
         ("wrong_runtime", lambda t: t.update({"runtime": "python"})),
@@ -665,13 +629,7 @@ def _d3_matrix_mutations():
 
 
 def test_d3_ten_case_fail_open_matrix():
-    """AC-01/NFR13: all 10 D3 fail-open cases leave the original command
-    unchanged — one auditable enumeration of the full contract.
-
-    Cases 1-4 (gates) assert zero subprocess. Cases 5-10 patch
-    shutil.which per the guard-adjacency discipline (CR 1.4) so the
-    delegation branch is actually reached on rtk-absent hosts, pinned by
-    run.assert_called_once()."""
+    """all 10 fail-open cases leave the original command unchanged — one auditable enumeration of the full contract. Cases 1-4 (gates) assert zero subprocess. Cases 5-10 patch shutil.which per the guard-adjacency discipline so the delegation branch is actually reached on rtk-absent hosts, pinned by run.assert_called_once."""
     original = "cargo test"
     ext = _load_ext()
 
@@ -715,9 +673,7 @@ def test_d3_ten_case_fail_open_matrix():
 
 
 def test_rtk_prefix_mocked_binary_invocation_counter_zero():
-    """AC-04/NFR7: mocked invocation counter — an `rtk `-prefixed command
-    triggers ZERO subprocess calls (idempotence on re-dispatch). The
-    which-patch is present so only the idempotence gate can stop the call."""
+    """mocked invocation counter — an `rtk `-prefixed command triggers ZERO subprocess calls (idempotence on re-dispatch). The which-patch is present so only the idempotence gate can stop the call."""
     ext = _load_ext()
     for cmd in ("rtk git status", "  rtk rewrite ls", "rtk bypass cargo test"):
         tool_args = {"code": cmd, "runtime": "terminal", "tool_name": "code_execution_tool"}
@@ -728,8 +684,7 @@ def test_rtk_prefix_mocked_binary_invocation_counter_zero():
 
 
 def test_happy_path_mutation_full_snapshot_isolation():
-    """AC-02: mocked valid rewrite mutates only tool_args['code']; every
-    other key is identical, nothing added, nothing removed."""
+    """mocked valid rewrite mutates only tool_args['code']; every other key is identical, nothing added, nothing removed."""
     ext = _load_ext()
     tool_args = {
         "code": "git status",
@@ -752,8 +707,7 @@ def test_happy_path_mutation_full_snapshot_isolation():
 
 
 def test_extension_instance_is_stateless_after_execute():
-    """AC-03/NFR4 structural: execute() writes no instance attribute — the
-    extension holds no mutable state between invocations (re-entrancy)."""
+    """structural: execute writes no instance attribute — the extension holds no mutable state between invocations (re-entrancy)."""
     ext = _load_ext()
     before = {k: v for k, v in vars(ext).items() if k != "agent"}
     with patch("shutil.which", return_value="/usr/local/bin/rtk"), patch(
@@ -766,11 +720,9 @@ def test_extension_instance_is_stateless_after_execute():
 
 
 def test_concurrent_threads_share_one_extension_instance():
-    """AC-03/NFR4/FR2: 8 threads x 4 outcome families through ONE shared
-    extension instance with per-thread tool_args — every outcome correct
-    and isolated; no shared-state corruption across threads."""
+    """8 threads x 4 outcome families through ONE shared extension instance with per-thread tool_args — every outcome correct and isolated; no shared-state corruption across threads."""
     ext = _load_ext()
-    # CR 1.5: patches installed ONCE here, never inside worker threads.
+    # patches installed ONCE here, never inside worker threads.
     # In-worker patch.__exit__ restores the process-global shutil.which /
     # subprocess.run into sibling threads still mid-body (reproduced under
     # sys.setswitchinterval stress: a sibling could reach the unpatched
@@ -848,9 +800,7 @@ def _stub_path(tmp_path, monkeypatch, body):
 
 
 def test_parallel_worker_processes_independent_outcomes(tmp_path, monkeypatch):
-    """AC-03/NFR4/FR2: two separate OS processes (the A0 parallel-worker
-    model, helpers/parallel_tools.py:576) each run the extension against
-    the real local stub — independent, correct, isolated outcomes."""
+    """Two separate OS processes (the framework parallel-worker model) each run the extension against the real local stub with independent, isolated outcomes."""
     _stub_path(
         tmp_path,
         monkeypatch,
@@ -876,11 +826,7 @@ def test_parallel_worker_processes_independent_outcomes(tmp_path, monkeypatch):
 
 
 def test_warn_once_latch_bounded_under_thread_concurrency():
-    """AC-03 adjacent: concurrent missing-binary executions on a SHARED
-    agent.data never crash; the latch ends True and the warning count stays
-    bounded (1..thread_count). Exact count is intentionally unpinned — the
-    check-then-set latch is process-local (parallel workers are separate
-    processes) and per-process best-effort (CR 1.4 defer stands)."""
+    """adjacent: concurrent missing-binary executions on a SHARED agent.data never crash; the latch ends True and the warning count stays bounded (1.thread_count). Exact count is intentionally unpinned — the check-then-set latch is process-local (parallel workers are separate processes) and per-process best-effort ( defer stands)."""
     agent = _StubAgent()
     ext = _load_ext_with_agent(agent)
     errors = []
@@ -893,7 +839,7 @@ def test_warn_once_latch_bounded_under_thread_concurrency():
         except Exception as e:  # collector
             errors.append(e)
 
-    # CR 1.5: patch scope is the parent (see
+    # patch scope is the parent (see
     # test_concurrent_threads_share_one_extension_instance: in-worker
     # patching races the global being restored into sibling threads).
     with patch("shutil.which", return_value=None):
@@ -913,10 +859,7 @@ def test_warn_once_latch_bounded_under_thread_concurrency():
 
 
 def test_real_stub_happy_path_mutates(tmp_path, monkeypatch):
-    """AC-01/2 real-stub harness: unmocked subprocess against a real local
-    stub 'rtk' — exercises the true availability check (shutil.which), argv
-    passing, real rc + utf-8 stdout decode, and the mutation. Consumes the
-    deferred 'real-subprocess rc!=0 / real-stub integration' item."""
+    """A real-stub harness: unmocked subprocess against a real local stub 'rtk' — exercises the true availability check (shutil.which), argv passing, real rc + utf-8 stdout decode, and the mutation. Consumes the deferred 'real-subprocess rc!=0 / real-stub integration' item."""
     _stub_path(tmp_path, monkeypatch, "#!/bin/sh\necho 'rtk git --short'\n")
     ext = _load_ext()
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
@@ -925,8 +868,7 @@ def test_real_stub_happy_path_mutates(tmp_path, monkeypatch):
 
 
 def test_real_stub_nonzero_rc_fails_open(tmp_path, monkeypatch):
-    """AC-01/D3 case 8 real-stub: a real stub exiting rc=2 — original
-    command unchanged. Live evidence for the rc!=0 branch."""
+    """A real stub exiting with a non-rewrite code leaves the original command unchanged."""
     _stub_path(tmp_path, monkeypatch, "#!/bin/sh\necho garbage >&2\nexit 2\n")
     ext = _load_ext()
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
@@ -935,16 +877,7 @@ def test_real_stub_nonzero_rc_fails_open(tmp_path, monkeypatch):
 
 
 def test_real_stub_e2big_fails_open(tmp_path, monkeypatch):
-    """AC-01/D3 case 7 real-stub: a normal payload really spawns the stub
-    through this harness, and an oversized single argv still fails open.
-
-    The invariant is the contract: any delegation failure leaves the
-    command unchanged. Whether an oversized payload dies at OS exec
-    (E2BIG/OSError -> catch-all) or earlier argv handling is host- and
-    libc-dependent; the fail-open outcome holds either way. Two controls
-    separate the evidence: (1) a small payload really reaches exec through
-    this same harness; (2) the OS refusal of the oversized argv is observed
-    independently of the extension behaviour under test."""
+    """A normal payload spawns the stub while an oversized single argv still fails open. The invariant is the contract: any delegation failure leaves the command unchanged, whether the OS refuses the argv at exec or earlier argv handling intervenes. Two controls separate the evidence: a small payload really reaches exec through this harness, and the OS refusal of the oversized argv is observed independently."""
     _stub_path(tmp_path, monkeypatch, "#!/bin/sh\nexit 0\n")
     ext = _load_ext()
     # Control 1: small payload actually reaches the real stub -- proves
@@ -981,12 +914,7 @@ def test_real_stub_e2big_fails_open(tmp_path, monkeypatch):
 
 
 def test_real_stub_grandchild_timeout_bounded(tmp_path, monkeypatch):
-    """AC-01/D3 case 6 real-stub: stub exits after spawning a background
-    grandchild holding the inherited stdout/stderr pipes. Asserts the
-    pinned bound: the wait is bounded to ~RTK_REWRITE_TIMEOUT and the
-    original command is unchanged. Re-verifies the CR-1.4 empirical
-    rejection with a live repro; a real unbounded HANG must be recorded as
-    an explicit D2/D7 deviation — never silently change the pinned shape."""
+    """The stub exits after spawning a background grandchild holding the inherited pipes. Asserts the pinned bound: the wait stays near the rewrite timeout and the original command is unchanged. A real unbounded hang would need an explicit recorded deviation; the pinned shape is never changed silently."""
     _stub_path(tmp_path, monkeypatch, "#!/bin/sh\nsleep 8 &\necho waiting\nexit 0\n")
     ext = _load_ext()
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
@@ -994,7 +922,7 @@ def test_real_stub_grandchild_timeout_bounded(tmp_path, monkeypatch):
     ext.execute(tool_name="code_execution_tool", tool_args=tool_args)
     elapsed = _time.monotonic() - start
     assert tool_args["code"] == "git status", "grandchild-pipe wait must fail open"
-    # Tolerance band (CR 1.5): upper bounds the wait (2.0s pinned timeout +
+    # Tolerance band: upper bounds the wait (2.0s pinned timeout +
     # margin), lower bound proves the timeout actually fired -- a silent
     # fire-and-forget or a dropped timeout= would pass a bare upper-bound
     # check vacuously.
@@ -1002,9 +930,7 @@ def test_real_stub_grandchild_timeout_bounded(tmp_path, monkeypatch):
 
 
 def test_no_rtk_derived_code_or_licensing_drift():
-    """AC-05/FR25 structural: the repo carries no RTK/Hermes-derived code —
-    the fail-open suite is authored from the architecture enumeration, never
-    copied from the upstream adapter; LICENSE stays Apache-2.0."""
+    """structural: the repo carries no RTK/Hermes-derived code — the fail-open suite is authored from the architecture enumeration, never copied from the upstream adapter; LICENSE stays Apache-2.0."""
     tests_dir = PLUGIN_ROOT / "tests"
     needles = ("hermes", "rtk_ai", "import rtk", "from rtk")
     for pyfile in PLUGIN_ROOT.rglob("*.py"):
@@ -1018,13 +944,11 @@ def test_no_rtk_derived_code_or_licensing_drift():
 
 
 def test_fail_open_branches_emit_no_log_noise():
-    """AC-01 adjacent (CS diagnostics decision): fail-open branches other
-    than the binary-missing D9 notification are silent — no unrequested log
-    noise; the operator signal stays the single warn-once notice."""
+    """Fail-open branches other than the binary-missing notification stay silent: no unrequested log noise, and the operator signal remains the single warn-once notice."""
     agent = _StubAgent()
     ext = _load_ext_with_agent(agent)
     cases = (
-        # rc 3 no longer skips (ADR-006): noise-suppression is pinned with a
+        # rc 3 no longer skips: noise-suppression is pinned with a
         # rc that still short-circuits at the case-8 gate.
         ("nonzero_rc", _fake_run(rc=1, stdout="x")),
         ("timeout", lambda argv, **kw: (_ for _ in ()).throw(subprocess.TimeoutExpired(argv, 2.0))),
@@ -1041,13 +965,10 @@ def test_fail_open_branches_emit_no_log_noise():
         assert len(agent.warnings) == 0, f"{name}: D9 notification is reserved for binary-missing"
 
 
-# --- Story 3.1: rc-3 acceptance gate (ADR-006, CC ds-2.5-ESCALATION-1 Option A) ---
+# ---: rc-3 acceptance gate (, CC -ESCALATION-1 Option A) ---
 
 def test_rc3_rewrite_applies_mutation():
-    """Story 3.1 AC-05: rc 3 (rtk 'allow rules do not cover every command'
-    — rewrite printed, approval deferred to host) with differing non-empty
-    stdout mutates tool_args['code']; no other key touched (single mutation
-    point, D1)."""
+    """A rewrite-available exit with differing non-empty stdout mutates tool_args at the single mutation point; no other key is touched."""
     ext = _load_ext()
     tool_args = {
         "code": "git status",
@@ -1067,8 +988,7 @@ def test_rc3_rewrite_applies_mutation():
 
 
 def test_rc3_empty_stdout_no_mutation():
-    """Story 3.1 AC-05: rc 3 does not bypass D3 case 9 — empty/whitespace
-    stdout means nothing was printed, so the original runs."""
+    """rc 3 does not bypass case 9 — empty/whitespace stdout means nothing was printed, so the original runs."""
     ext = _load_ext()
     for out in ("", "   \n\t"):
         tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
@@ -1081,8 +1001,7 @@ def test_rc3_empty_stdout_no_mutation():
 
 
 def test_rc3_identical_stdout_no_mutation():
-    """Story 3.1 AC-05: rc 3 does not bypass D3 case 10 — an echo of the
-    original is not a rewrite (normalized-to-normalized comparison, CR 1.3)."""
+    """rc 3 does not bypass case 10 — an echo of the original is not a rewrite (normalized-to-normalized comparison, )."""
     ext = _load_ext()
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
     with patch("shutil.which", return_value="/usr/local/bin/rtk"), patch(
@@ -1095,9 +1014,7 @@ def test_rc3_identical_stdout_no_mutation():
 
 @pytest.mark.parametrize("rc", [1, 2, 4, 99, -1])
 def test_non_rewrite_available_rc_preserves_original(rc):
-    """Story 3.1 AC-05: only rc 0/3 are rewrite-available (ADR-006). rc 1
-    (no rewrite), rc 2 (deny) and any other non-zero code — including
-    negative kill codes — preserve the original command."""
+    """only rc 0/3 are rewrite-available. rc 1 (no rewrite), rc 2 (deny) and any other non-zero code — including negative kill codes — preserve the original command."""
     ext = _load_ext()
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
     with patch("shutil.which", return_value="/usr/local/bin/rtk"), patch(
@@ -1109,9 +1026,7 @@ def test_non_rewrite_available_rc_preserves_original(rc):
 
 
 def test_rc3_does_not_weaken_preceding_gates():
-    """Story 3.1 AC-05 adjacent (D8 order): the amended case-8 gate sits
-    AFTER the guard clauses — rtk-prefixed and non-terminal payloads still
-    short-circuit before any subprocess, rc 3 notwithstanding."""
+    """The rewrite-available gate sits after the guard clauses: rtk-prefixed and non-terminal payloads still short-circuit before any subprocess."""
     ext = _load_ext()
     gated = (
         {"code": "rtk git status", "runtime": "terminal", "tool_name": "code_execution_tool"},
@@ -1129,20 +1044,17 @@ def test_rc3_does_not_weaken_preceding_gates():
 
 
 def test_rc3_gate_source_pin():
-    """Story 3.1 AC-05 structural pin (Story 1.2 precedent): the case-8
-    gate in the extension source must accept exactly the rc 0/3 pair —
-    an inline membership test exists (neither `!= 0` nor `in (0,)`)."""
+    """Structural pin: the result gate in the extension source must accept exactly the rc 0/3 pair as an inline membership test."""
     src = (PLUGIN_ROOT / "extensions" / "python" / "tool_execute_before" / "_10_rtk_intercept.py").read_text()
     assert "result.returncode not in (0, 3)" in src, "case-8 gate must accept rc 0 and 3 (ADR-006)"
     assert "result.returncode != 0" not in src, "legacy rc != 0 gate must be gone"
 
 
-# ===== Story 3.2: RTK Gain Savings Visibility (FR19) =====
+# =====: RTK Gain Savings Visibility =====
 
 
 class _HintAgent:
-    """AC-05: stand-in capturing every agent-context log call with its type
-    so the gain hint can be asserted independently of the warn-once surface."""
+    """stand-in capturing every agent-context log call with its type so the gain hint can be asserted independently of the warn-once surface."""
 
     def __init__(self):
         self.data = {}
@@ -1162,8 +1074,7 @@ class _HintAgent:
 
 
 def test_first_rewrite_hints_gain_once():
-    """AC-05: first applied rewrite emits exactly one info notice naming
-    `rtk gain`; the session latch is set (warn-once shape, Story 1.4)."""
+    """first applied rewrite emits exactly one info notice naming `rtk gain`; the session latch is set (warn-once shape, )."""
     agent = _HintAgent()
     ext = _load_ext_with_agent(agent)
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
@@ -1179,7 +1090,7 @@ def test_first_rewrite_hints_gain_once():
 
 
 def test_gain_hint_silent_after_first():
-    """AC-05: second and later rewrites stay silent — one hint per session."""
+    """second and later rewrites stay silent — one hint per session."""
     agent = _HintAgent()
     ext = _load_ext_with_agent(agent)
     with patch("shutil.which", return_value="/usr/local/bin/rtk"):
@@ -1192,8 +1103,7 @@ def test_gain_hint_silent_after_first():
 
 
 def test_gain_hint_agent_absent_silent():
-    """AC-05: self.agent is None -> silent (no latch write, no crash) while
-    the rewrite still applies (notification is best-effort only)."""
+    """self.agent is None -> silent (no latch write, no crash) while the rewrite still applies (notification is best-effort only)."""
     ext = _load_ext()  # agent=None
     tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
     with patch("shutil.which", return_value="/usr/local/bin/rtk"):
@@ -1203,8 +1113,7 @@ def test_gain_hint_agent_absent_silent():
 
 
 def test_gain_hint_log_failure_still_mutates():
-    """AC-05: a broken log surface can never break the agent — mutation
-    proceeds and the exception is swallowed (mirrors _warn_unavailable)."""
+    """a broken log surface can never break the agent — mutation proceeds and the exception is swallowed (mirrors _warn_unavailable)."""
     agent = _HintAgent()
 
     def _boom(**kwargs):
@@ -1220,8 +1129,7 @@ def test_gain_hint_log_failure_still_mutates():
 
 
 def test_gain_hint_absent_on_all_fail_open_paths():
-    """AC-05/D8: the hint is downstream of every guard — no fail-open return
-    path may emit it (gate adjacency)."""
+    """the hint is downstream of every guard — no fail-open return path may emit it (gate adjacency)."""
     def _hintless_run(tool_args, which_val="/usr/local/bin/rtk", **run_kw):
         agent = _HintAgent()
         ext = _load_ext_with_agent(agent)
@@ -1250,8 +1158,7 @@ def test_gain_hint_absent_on_all_fail_open_paths():
 
 
 def test_gain_hint_source_pin():
-    """AC-05: structural pin — single-source latch constant + exactly one
-    call site, placed adjacent to the mutation point (Story 1.2 precedent)."""
+    """Structural pin: a single-source latch constant with exactly one call site adjacent to the mutation point."""
     src = (PLUGIN_ROOT / "extensions" / "python" / "tool_execute_before" / "_10_rtk_intercept.py").read_text()
     assert 'RTK_GAIN_HINTED = "rtk_a0_gain_hinted"' in src, "latch key must be a single-source constant"
     calls = src.count("_hint_gain()")
@@ -1262,10 +1169,7 @@ def test_gain_hint_source_pin():
 
 
 def test_no_plugin_owned_savings_persistence():
-    """Story 3.1 AC-03 (FR18) structural pin (CR 3.1): savings accounting is
-    RTK-internal — the extension holds zero persistence primitives and the
-    plugin root owns no stats/state file that could substitute for RTK's
-    own ledger. Matches the MVP data boundary (story Task 4.2)."""
+    """Structural pin: savings accounting stays RTK-internal. The extension holds no persistence primitives and the plugin owns no stats or state file that could substitute for the RTK ledger. Matches the MVP data boundary."""
     ext_src = (PLUGIN_ROOT / "extensions" / "python" / "tool_execute_before" / "_10_rtk_intercept.py").read_text()
     write_primitives = ("open(", ".write_text(", ".write_bytes(", "json.dump", "json.load", "Path(", "mkdir(", "shutil.copy", "os.replace", "os.rename")
     for needle in write_primitives:
@@ -1279,7 +1183,7 @@ def test_no_plugin_owned_savings_persistence():
             continue
         owned.append(str(candidate))
     assert not owned, f"AC-03: plugin-owned persistence surface exists: {owned}"
-    # Story 3.2 AC-03 extension: gain-visibility must add nothing either —
+    # extension: gain-visibility must add nothing either —
     # no plugin-owned gain/savings ledger anywhere in the plugin tree.
     ledger = []
     for candidate in PLUGIN_ROOT.rglob("*"):

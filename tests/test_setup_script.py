@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Story 2.1 tests: pinned binary download script (bash). Pure runtime — no framework imports.
-
-Network-free by design: every network surface is either a resolved-URL read
-(`--print-download-plan`) or a mocked curl PATH stub. Real-network E2E is
-Story 2.5 scope.
-"""
+"""Tests for the pinned binary download script (bash). Pure runtime, no framework imports. Network-free by design: every network surface is either a resolved-URL read or a mocked curl stub on PATH."""
 import hashlib
 import os
 import re
@@ -52,11 +47,7 @@ def _plan_env(root: Path) -> dict:
 
 
 def _run_plan(root: Path, cwd: Path | None = None) -> list[tuple[str, str]]:
-    """Run `setup.sh --print-download-plan` against a project root; return (name, url) pairs.
-
-    Two-sided normalization discipline (Epic 1 retro checklist): both sides of
-    every comparison are stripped. Optional cwd proves CWD-independence.
-    """
+    """Run `setup.sh --print-download-plan` against a project root; return (name, url) pairs. Two-sided normalization discipline ( retro checklist): both sides of every comparison are stripped. Optional cwd proves CWD-independence."""
     proc = subprocess.run(
         ["bash", str(SETUP), "--print-download-plan"],
         cwd=str(cwd) if cwd else None,
@@ -112,11 +103,11 @@ def _argv_calls(argv_log: Path) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# AC-01: pin-read + HTTPS download of both pinned assets
+# pin-read + HTTPS download of both pinned assets
 # ---------------------------------------------------------------------------
 
 def test_plan_emits_exactly_two_pinned_assets(tmp_path):
-    """AC-01: plan mode prints exactly the tarball and checksums.txt for the real pin."""
+    """plan mode prints exactly the tarball and checksums.txt for the real pin."""
     tag = PIN_FILE.read_text(encoding="utf-8").strip()
     pairs = _run_plan(PLUGIN_ROOT)
     assert len(pairs) == 2, f"expected exactly 2 assets, got {pairs}"
@@ -130,7 +121,7 @@ def test_plan_emits_exactly_two_pinned_assets(tmp_path):
 
 
 def test_plan_no_network_side_effects(tmp_path):
-    """AC-01/AC-04: plan mode is read-only — the real staging location stays absent."""
+    """plan mode is read-only — the real staging location stays absent."""
     staging = tmp_path / "real-staging-location"
     env = _plan_env(PLUGIN_ROOT)
     env["RTK_STAGING_DIR"] = str(staging)
@@ -146,18 +137,13 @@ def test_plan_no_network_side_effects(tmp_path):
 
 
 def test_plan_is_cwd_independent(tmp_path):
-    """AC-01: plan mode resolves the pin via RTK_PROJECT_ROOT, not the cwd."""
+    """plan mode resolves the pin via RTK_PROJECT_ROOT, not the cwd."""
     pairs = _run_plan(PLUGIN_ROOT, cwd=tmp_path)
     assert EXPECTED_TARBALL in [name for name, _ in pairs]
 
 
 def test_mocked_curl_downloads_both_assets_to_staging(tmp_path):
-    """AC-01: end-to-end execution with a curl PATH stub — exactly two curl calls.
-
-    Guard-adjacency discipline (Epic 1 retro checklist): the `which` probe is
-    pre-patched to the stub curl BEFORE PATH mutation, so the stub is what the
-    script finds.
-    """
+    """End-to-end execution with a curl stub on PATH makes exactly two curl calls. Guard-adjacency: the which probe is pre-patched to the stub before PATH mutation, so the stub is what the script resolves."""
     argv_log = tmp_path / "argv.log"
     bin_dir = _curl_stub(tmp_path, argv_log)
     staging = tmp_path / "staging"
@@ -173,8 +159,8 @@ def test_mocked_curl_downloads_both_assets_to_staging(tmp_path):
     )
     calls = _argv_calls(argv_log)
 
-    # The stub stages 'stub-bytes' placeholders, so the Story 2.2 integrity
-    # gate must REJECT them: fail-safe direction (Story 2.2 pins this — the
+    # The stub stages 'stub-bytes' placeholders, so the integrity
+    # gate must REJECT them: fail-safe direction (pins this — the
     # download-surface test no longer expects a successful install).
     assert proc.returncode != 0, "junk downloads must fail the integrity gate"
     assert len(calls) == 2, f"expected exactly 2 curl invocations, got {calls}"
@@ -188,7 +174,7 @@ def test_mocked_curl_downloads_both_assets_to_staging(tmp_path):
     for call in calls:
         seen_urls.append(call)
         assert " -o " in f" {call} ", f"curl call missing -o: {call}"
-        # Fail-fast flags present (NFR5 HTTPS + explicit failure)
+        # Fail-fast flags present (HTTPS + explicit failure)
         for flag in ("-fsSL", "--fail"):
             assert flag in call.split(), f"curl call missing {flag}: {call}"
         for name, url in expected.items():
@@ -201,7 +187,7 @@ def test_mocked_curl_downloads_both_assets_to_staging(tmp_path):
     assert any(expected[EXPECTED_CHECKSUMS] in c for c in seen_urls)
 
     # Absence allowlist: the -fsSL/--fail checks above are presence-shaped and
-    # cannot see TLS-weakening or proxy-redirect drift (CR-2.1 blind F5).
+# cannot see TLS-weakening or proxy-redirect drift (blind ).
     for call in calls:
         tokens = call.split()
         for flag in (
@@ -215,7 +201,7 @@ def test_mocked_curl_downloads_both_assets_to_staging(tmp_path):
         ):
             assert flag not in tokens, f"TLS/proxy-weakening shape {flag!r}: {call}"
 
-    # CR 2.2: the EXIT trap (armed before download) removes the staged pair
+    # the EXIT trap (armed before download) removes the staged pair
     # even on the integrity-abort path, so post-run file-existence is no longer
     # assertable here — integrity rejection is observable from the exit code
     # (fail-safe direction), which this test already pins above.
@@ -224,11 +210,11 @@ def test_mocked_curl_downloads_both_assets_to_staging(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# AC-02: tag single-source + HTTPS-only audit
+# tag single-source + HTTPS-only audit
 # ---------------------------------------------------------------------------
 
 def test_setup_script_contains_no_version_literal():
-    """AC-02: no version-like token in code outside the pin-file read line."""
+    """no version-like token in code outside the pin-file read line."""
     code = _code_source()
     pin_lines = [ln for ln in code.splitlines() if "rtk_pin.txt" in ln]
     assert pin_lines, "setup.sh must read the pin file"
@@ -242,7 +228,7 @@ def test_setup_script_contains_no_version_literal():
 
 
 def test_setup_script_https_only():
-    """AC-02: every URL literal in the script is https (NFR5)."""
+    """every URL literal in the script is https."""
     code = _code_source()
     http_urls = re.findall(r"http://[^\s'\"]+", code)
     assert not http_urls, f"insecure http url in script: {http_urls}"
@@ -251,7 +237,7 @@ def test_setup_script_https_only():
 
 
 def test_pin_token_appears_once_as_code():
-    """AC-02/NFR12: the pin-file read is the single place the tag enters."""
+    """the pin-file read is the single place the tag enters."""
     code = _code_source()
     reads = [ln for ln in code.splitlines() if re.search(r"PIN=\$\(\s*cat\s+", ln) and "rtk_pin.txt" in ln]
     assert len(reads) == 1, f"tag must be read exactly once from the pin file: {reads}"
@@ -260,7 +246,7 @@ def test_pin_token_appears_once_as_code():
 
 
 def test_setup_script_fail_fast_curl_flags():
-    """AC-02/NFR5: curl invocations use -fsSL and --fail."""
+    """curl invocations use -fsSL and --fail."""
     code = _code_source()
     curl_calls = [ln for ln in code.splitlines() if "curl " in ln]
     assert curl_calls, "expected curl invocation(s) in script"
@@ -270,17 +256,17 @@ def test_setup_script_fail_fast_curl_flags():
 
 
 def test_setup_script_bash_shebang():
-    """AC-04: bash shebang (never POSIX sh)."""
+    """bash shebang (never POSIX sh)."""
     first = _source().splitlines()[0]
     assert first.strip() == "#!/usr/bin/env bash", f"bad shebang: {first}"
 
 
 # ---------------------------------------------------------------------------
-# AC-03: one-line-PR bump property (pin edit alone changes every URL)
+# one-line-PR bump property (pin edit alone changes every URL)
 # ---------------------------------------------------------------------------
 
 def test_bump_property_pin_only(tmp_path):
-    """AC-03: rewriting ONLY rtk_pin.txt re-points every download URL."""
+    """rewriting ONLY rtk_pin.txt re-points every download URL."""
     repo = tmp_path / "repo"
     shutil.copytree(
         PLUGIN_ROOT,
@@ -296,7 +282,7 @@ def test_bump_property_pin_only(tmp_path):
 
 
 def test_bump_property_matrix(tmp_path):
-    """AC-03: tag flows through every URL for two hypothetical pins."""
+    """tag flows through every URL for two hypothetical pins."""
     for tag in ("v2.3.4", "v10.20.30"):
         repo = tmp_path / f"repo-{tag}"
         shutil.copytree(
@@ -312,11 +298,11 @@ def test_bump_property_matrix(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# AC-04: no pip packages, no build tooling, no interactive input
+# no pip packages, no build tooling, no interactive input
 # ---------------------------------------------------------------------------
 
 def test_no_package_manager_or_build_tooling_in_script():
-    """AC-04: the script never invokes tooling runtimes."""
+    """the script never invokes tooling runtimes."""
     code = _code_source()
     banned = ["pip", "pip3", "apt", "apt-get", "cargo", "rustup", "make", "cmake", "gcc", "npm", "node", "wget", "perl"]
     offenders = []
@@ -330,7 +316,7 @@ def test_no_package_manager_or_build_tooling_in_script():
 
 
 def test_no_interactive_input_in_script():
-    """AC-04: nothing prompts the operator."""
+    """nothing prompts the operator."""
     code = _code_source()
     patterns = [
         r"\bread\s+-?\w*\s*\w*\s*\$",  # read var / read -r var
@@ -355,29 +341,29 @@ def test_no_interactive_input_in_script():
 # ---------------------------------------------------------------------------
 
 def test_recorded_asset_sha256_is_pinned_in_tests():
-    """Recorded GitHub-API fact: expected tarball digest (Story 2.2 verifies for real)."""
+    """Recorded GitHub-API fact: expected tarball digest ( verifies for real)."""
     assert re.fullmatch(r"[0-9a-f]{64}", ASSET_SHA256)
 
 
 def test_setup_script_exists_and_executable_bit():
-    """Sanity: the deliverable exists and is directly executable (Story 2.4 wiring)."""
+    """Sanity: the deliverable exists and is directly executable ( wiring)."""
     assert SETUP.is_file()
     assert os.access(SETUP, os.X_OK), "setup.sh must carry the executable bit"
 
 
 def test_full_edition_asset_not_oss(tmp_path):
-    """D6: the full edition tarball is selected, never rtk-oss-*."""
+    """the full edition tarball is selected, never rtk-oss-*."""
     by_name = dict(_run_plan(PLUGIN_ROOT))
     assert EXPECTED_TARBALL in by_name
     assert not any(name.startswith("rtk-oss") for name in by_name)
 
 
 # ---------------------------------------------------------------------------
-# Story 2.2: Integrity Verification & PATH Installation (AC-01..AC-05)
+# Integrity Verification & PATH Installation (.)
 # ---------------------------------------------------------------------------
-# AC-01 contract decision (recorded in story Dev Notes): RTK publishes
+# contract decision (recorded in story Dev Notes): RTK publishes
 # sha256 over the RELEASE ASSET FILES (the tarball itself -- the recorded
-# 5b919c3b digest is the tarball sha, GitHub-API-verified in Story 2.1).
+# 5b919c3b digest is the tarball sha, GitHub-API-verified in).
 # Verification compares sha256(staged tarball) against the pinned
 # checksums.txt entry; extraction happens only AFTER verification passes.
 
@@ -400,8 +386,8 @@ def _make_fake_tarball(tmp_path, nested=False):
         stub_path = work / "rtk-v1.0.1" / "rtk"
     else:
         stub_path = work / "rtk"
-    # CR 2.2: the REAL rtk v1.0.1 binary prints "rtk 1.0.1" (no v prefix) —
-    # byte-verified during CR 2.2 against the actual release artifact. The
+    # the REAL rtk v1.0.1 binary prints "rtk 1.0.1" (no v prefix) —
+    # byte-verified during against the actual release artifact. The
     # fixture must encode the real output format or the suite cannot catch
     # pin/version mismatches (edge TS-1).
     stub_path.write_text("#!/usr/bin/env bash\necho 'rtk 1.0.1 (fake fixture)'\n", encoding="utf-8")
@@ -559,7 +545,7 @@ def _run_full(tmp_path, nested=False, version_text=None, corrupt_checksum=False,
 
 
 def test_verify_and_install_happy_path(tmp_path):
-    """AC-01/02/03: valid checksum -> install to RTK_INSTALL_DIR -> rtk --version self-check."""
+    """03: valid checksum -> install to RTK_INSTALL_DIR -> rtk --version self-check."""
     pin = PIN_FILE.read_text(encoding="utf-8").strip()
     proc, install_dir, _bin, version_log, _log = _run_full(tmp_path, version_text=f"rtk {pin[1:]}")
     assert proc.returncode == 0, f"setup failed: {proc.stderr}"
@@ -570,21 +556,21 @@ def test_verify_and_install_happy_path(tmp_path):
     assert any("--version" in p for p in probes), f"self-check not run via PATH: {probes}"
 
 
-# Story 2.3 (AC-02) SUPERSEDES the 2.2-era hard abort on checksum mismatch:
+# SUPERSEDES the 2.2-era hard abort on checksum mismatch:
 # a corrupted download is availability-shaped -> warn + exit 0 (never install).
 # Pinned by test_checksum_mismatch_warns_not_fails; this placeholder keeps the
-# AC-01 lineage traceable without duplicating that pin.
+# lineage traceable without duplicating that pin.
 
 
 def test_missing_checksums_aborts(tmp_path):
-    """AC-01: missing/unparseable checksums.txt aborts before install."""
+    """missing/unparseable checksums.txt aborts before install."""
     proc, install_dir, _bin, _vlog, _log = _run_full(tmp_path, skip_checksums=True)
     assert proc.returncode != 0, "missing checksums must abort setup"
     assert not (install_dir / "rtk").exists(), "no install without checksums"
 
 
 def test_nested_tarball_layout_installs_flat(tmp_path):
-    """AC-02: nested upstream layout (rtk-vX/rtk) still installs <dir>/rtk flat."""
+    """nested upstream layout (rtk-vX/rtk) still installs <dir>/rtk flat."""
     pin = PIN_FILE.read_text(encoding="utf-8").strip()
     proc, install_dir, _bin, _vlog, _log = _run_full(tmp_path, nested=True, version_text=f"rtk {pin[1:]}")
     assert proc.returncode == 0, f"nested layout failed: {proc.stderr}"
@@ -593,13 +579,13 @@ def test_nested_tarball_layout_installs_flat(tmp_path):
     assert os.access(installed, os.X_OK)
 
 
-# Story 2.3 (AC-03) SUPERSEDES the hard-fail self-check: a corrupt or
-# wrong-version binary warns + rolls back + exit 0 (NFR14). Pinned by
+# SUPERSEDES the hard-fail self-check: a corrupt or
+# wrong-version binary warns + rolls back + exit 0. Pinned by
 # test_self_check_failure_warns_and_rolls_back.
 
 
 def test_no_venv_path_or_package_manager_in_install_path():
-    """AC-02/AC-04 (structural): install path never touches a venv or package manager."""
+    """structural): install path never touches a venv or package manager."""
     code = _code_source()
     for token in ("site-packages", "/venv/", ".venv", "activate"):
         assert token not in code, f"install path references venv surface: {token}"
@@ -611,8 +597,7 @@ def test_no_venv_path_or_package_manager_in_install_path():
 
 
 def test_self_check_uses_shell_path_resolution():
-    """AC-03/NFR10: the self-check invokes rtk by NAME (PATH-resolved), as A0
-    terminal commands do — not a direct path to the install dir."""
+    """the self-check invokes rtk by NAME (PATH-resolved), as A0 terminal commands do — not a direct path to the install dir."""
     code = _code_source()
     probes = [ln.strip() for ln in code.splitlines() if "rtk --version" in ln or "rtk" in ln and "--version" in ln]
     assert probes, "expected a version self-check in the script"
@@ -621,13 +606,13 @@ def test_self_check_uses_shell_path_resolution():
 
 
 def test_script_installs_with_chmod_x():
-    """AC-02: the install action is extract + chmod +x — no execution happens at install time."""
+    """the install action is extract + chmod +x — no execution happens at install time."""
     code = _code_source()
     assert "chmod" in code, "install step must set the executable bit"
 
 
 def test_second_run_skips_download_when_version_matches(tmp_path):
-    """AC-05: version-matching rtk already on PATH -> idempotent skip (no curl, no write)."""
+    """version-matching rtk already on PATH -> idempotent skip (no curl, no write)."""
     pin = PIN_FILE.read_text(encoding="utf-8").strip()
     repo = _fixture_repo(tmp_path)
     bin_dir, argv_log = _stub_bin_dir(tmp_path)
@@ -652,7 +637,7 @@ def test_second_run_skips_download_when_version_matches(tmp_path):
 
 
 def test_malformed_pin_aborts_before_download(tmp_path):
-    """CR-2.1-D8: malformed pin (garbage/empty/multiline) never builds a URL or downloads."""
+    """malformed pin (garbage/empty/multiline) never builds a URL or downloads."""
     for bad_pin in ("garbage", "", "v1.0", "v1.0.1\nextra-line"):
         tmp2 = tmp_path / f"case-{abs(hash(bad_pin))}"
         tmp2.mkdir()
@@ -669,7 +654,7 @@ def test_malformed_pin_aborts_before_download(tmp_path):
 
 
 def test_staged_assets_cleaned_after_successful_install(tmp_path):
-    """CR-2.1-D5: successful install cleans the staged pair; no orphan tarball remains."""
+    """successful install cleans the staged pair; no orphan tarball remains."""
     pin = PIN_FILE.read_text(encoding="utf-8").strip()
     proc, install_dir, staging, _vlog, _log = _run_full(tmp_path, version_text=f"rtk {pin[1:]}")
     assert proc.returncode == 0, f"setup failed: {proc.stderr}"
@@ -679,7 +664,7 @@ def test_staged_assets_cleaned_after_successful_install(tmp_path):
 
 
 def test_curl_uses_proto_redir_constraints():
-    """CR-2.1-D3: redirects are constrained to https via --proto-redir (+ max-redirs)."""
+    """redirects are constrained to https via --proto-redir (+ max-redirs)."""
     code = _code_source()
     curl_lines = [ln for ln in code.splitlines() if "curl " in ln]
     assert curl_lines, "expected curl invocation(s)"
@@ -689,7 +674,7 @@ def test_curl_uses_proto_redir_constraints():
 
 
 def test_staging_symlink_is_rejected(tmp_path):
-    """CR-2.1-D1: a symlinked staging path is rejected, not silently followed."""
+    """a symlinked staging path is rejected, not silently followed."""
     real = tmp_path / "real-staging"
     real.mkdir()
     link = tmp_path / "staging-link"
@@ -708,18 +693,12 @@ def test_staging_symlink_is_rejected(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# CR 2.2 in-review patch regressions (blind + edge + auditor converged)
+# Regression pins for the in-review patches (convergent layers)
 # ---------------------------------------------------------------------------
 
 
 def test_real_version_output_format_no_v_prefix():
-    """CR 2.2/edge TS-1: the real rtk 1.0.1 binary prints 'rtk 1.0.1' (no v).
-
-    Byte-verified during CR 2.2 against the actual release artifact
-    (github.com/rtk-ai/rtk v1.0.1): `rtk --version` -> "rtk 1.0.1".
-    The fixture stub must encode that exact shape or no test can catch a
-    pin/version-format mismatch.
-    """
+    """edge TS-1: the real rtk 1.0.1 binary prints 'rtk 1.0.1' (no v). Byte-verified during against the actual release artifact (github.com/rtk-ai/rtk v1.0.1): `rtk --version` -> "rtk 1.0.1". The fixture stub must encode that exact shape or no test can catch a pin/version-format mismatch."""
     pin = PIN_FILE.read_text(encoding="utf-8").strip()
     assert pin.startswith("v") and pin[1:] == "1.0.1", pin
     src = SETUP.read_text(encoding="utf-8")
@@ -728,7 +707,7 @@ def test_real_version_output_format_no_v_prefix():
 
 
 def test_staging_symlink_with_trailing_slash_is_rejected(tmp_path):
-    """CR 2.2/edge D-1: [ -L x/ ] dereferences the link — guard must strip the slash."""
+    """[ -L x/ ] dereferences the link — guard must strip the slash."""
     real = tmp_path / "real-staging"
     real.mkdir()
     link = tmp_path / "staging-link"
@@ -747,7 +726,7 @@ def test_staging_symlink_with_trailing_slash_is_rejected(tmp_path):
 
 
 def test_pre_planted_staging_target_symlink_is_refused(tmp_path):
-    """CR 2.2/blind M-3: curl -o follows a pre-planted staging-file symlink; refuse it."""
+    """curl -o follows a pre-planted staging-file symlink; refuse it."""
     staging = tmp_path / "staging"
     staging.mkdir()
     victim = tmp_path / "victim.txt"
@@ -768,11 +747,7 @@ def test_pre_planted_staging_target_symlink_is_refused(tmp_path):
 
 
 def test_idempotency_gate_exact_token_not_substring_family(tmp_path):
-    """CR 2.2/edge D-2: '1.0.1' must not match a longer version token (1.0.10).
-
-    The old substring grep (grep -Fq "$PIN") let v1.0.1 match output
-    'rtk v1.0.10' and silently skip provisioning a different version.
-    """
+    """'1.0.1' must not match a longer version token (1.0.10). The old substring grep (grep -Fq "$PIN") let v1.0.1 match output 'rtk v1.0.10' and silently skip provisioning a different version."""
     repo = _fixture_repo(tmp_path)
     bin_dir, argv_log = _stub_bin_dir(tmp_path)
     _rtk_stub(bin_dir, "rtk 1.0.10", flip=False)
@@ -789,11 +764,7 @@ def test_idempotency_gate_exact_token_not_substring_family(tmp_path):
 
 
 def test_multi_rtk_archive_does_not_abort_under_pipefail(tmp_path):
-    """CR 2.2/blind D-2 + edge D-4: find|head SIGPIPE-aborts under set -o pipefail.
-
-    An archive containing many 'rtk'-named files killed the old
-    `find ... | head -n 1` pipeline with rc=141; -print -quit keeps rc=0.
-    """
+    """+: find|head SIGPIPE-aborts under set -o pipefail. An archive containing many 'rtk'-named files killed the old `find. | head -n 1` pipeline with rc=141; -print -quit keeps rc=0."""
     procs = []
     # 400 rtk entries: empirically SIGPIPE-triggering for the old pipeline
     work = tmp_path / "decoy-work"
@@ -835,7 +806,7 @@ def test_multi_rtk_archive_does_not_abort_under_pipefail(tmp_path):
 
 
 def test_plan_mode_remains_pure_query_when_rtk_installed(tmp_path):
-    """CR 2.2/blind L-2: plan seam must print URLs even when the pinned rtk is on PATH."""
+    """plan seam must print URLs even when the pinned rtk is on PATH."""
     pin = PIN_FILE.read_text(encoding="utf-8").strip()
     repo = _fixture_repo(tmp_path)
     bin_dir, argv_log = _stub_bin_dir(tmp_path)
@@ -854,7 +825,7 @@ def test_plan_mode_remains_pure_query_when_rtk_installed(tmp_path):
 
 
 def test_unknown_argument_is_usage_error_not_silent_install(tmp_path):
-    """CR 2.2/blind L-3: an unrecognized flag must not trigger a full install run."""
+    """an unrecognized flag must not trigger a full install run."""
     repo = _fixture_repo(tmp_path)
     bin_dir, argv_log = _stub_bin_dir(tmp_path)
     install_dir = tmp_path / "install"
@@ -869,15 +840,11 @@ def test_unknown_argument_is_usage_error_not_silent_install(tmp_path):
 
 
 def test_failed_run_cleans_staged_assets(tmp_path):
-    """CR 2.2/blind L-1: an aborted run must not leak the staged tarball/checksums.
-
-    Before the CR 2.2 EXIT trap, every failure path (integrity mismatch, missing
-    entry, no-rtk-found, self-check rollback) exited leaving the staged pair.
-    """
+    """An aborted run must not leak the staged tarball or checksums. Before the exit trap, every failure path leaked the staged pair."""
     staging = tmp_path / "staging"
-    # Story 2.3: corrupt_checksum is now WARN+exit 0 (availability class), so
+    # corrupt_checksum is now WARN+exit 0 (availability class), so
     # the hard-abort path is driven by a checksums file that lacks the pinned
-    # entry (integrity/format class — still fail-hard per AC-05).
+    # entry (integrity/format class — still fail-hard per).
     bin_dir, argv_log = _stub_bin_dir(tmp_path)
     tmp_path.joinpath("assets-src").mkdir(exist_ok=True)
     assets = _stage_fixture_assets(tmp_path)
@@ -903,7 +870,7 @@ def test_failed_run_cleans_staged_assets(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Story 2.3: Warn-Not-Fail Setup Resilience (AC-01..AC-05)
+# Warn-Not-Fail Setup Resilience (.)
 # Network/availability failures must exit 0 with a clear operator warning and
 # never install anything; integrity/format failures stay fail-hard (2.2
 # contract — resilience must not weaken security). Network-free: curl is a
@@ -957,7 +924,7 @@ def _run_network_failure(tmp_path: Path, rc: int, partial_bytes: int = 0, pin_te
     install_dir.mkdir()
     staging = tmp_path / "staging"
     argv_log = tmp_path / "curl-argv.log"
-    # AC-01 isolation (Epic-1 guard-adjacency lesson): no host rtk on PATH
+    # isolation (guard-adjacency lesson): no host rtk on PATH
     # can satisfy the idempotency gate — the stub bin dir carries only curl.
     env = _setup_env(repo, staging, install_dir, extra={
         # prepend (not replace) so bash/coreutils still resolve; the stub
@@ -972,7 +939,7 @@ def _run_network_failure(tmp_path: Path, rc: int, partial_bytes: int = 0, pin_te
 
 
 def _combined(proc) -> str:
-    """Two-sided normalized combined output (Epic 1 retro discipline)."""
+    """Two-sided normalized combined output ( retro discipline)."""
     return (proc.stdout + "\n" + proc.stderr).strip()
 
 
@@ -981,12 +948,7 @@ import pytest  # noqa: E402  (test dependency imported near its first parametriz
 
 @pytest.mark.parametrize("name,rc", sorted(CURL_NETWORK_RCS.items()))
 def test_network_failure_warns_and_exits_zero(tmp_path, name, rc):
-    """AC-01: every curl network failure exit code -> exit 0 + warning, no install.
-
-    Parametrized over the canonical curl exit codes: connection refused (7),
-    operation timeout (28), HTTP error via --fail (22), DNS failure (6),
-    unsupported redirect (3). FR15/NFR6: agent-usable plugin, never blocked.
-    """
+    """every curl network failure exit code -> exit 0 + warning, no install. Parametrized over the canonical curl exit codes: connection refused (7), operation timeout (28), HTTP error via --fail (22), DNS failure (6), unsupported redirect (3). /: agent-usable plugin, never blocked."""
     proc, install_dir, argv_log, staging = _run_network_failure(tmp_path, rc)
     out = _combined(proc)
     assert proc.returncode == 0, f"{name}: network failure must exit 0, got {proc.returncode}: {out}"
@@ -999,7 +961,7 @@ def test_network_failure_warns_and_exits_zero(tmp_path, name, rc):
 
 
 def test_partial_download_warns_not_fails(tmp_path):
-    """AC-01: curl writes some bytes then fails (rc 18) -> warn + exit 0 + no install."""
+    """curl writes some bytes then fails (rc 18) -> warn + exit 0 + no install."""
     proc, install_dir, argv_log, staging = _run_network_failure(tmp_path, rc=18, partial_bytes=512)
     out = _combined(proc)
     assert proc.returncode == 0, f"partial download must exit 0: {out}"
@@ -1011,12 +973,7 @@ def test_partial_download_warns_not_fails(tmp_path):
 
 
 def test_checksum_mismatch_warns_not_fails(tmp_path):
-    """AC-02: corrupt download (sha != pinned) -> warn + exit 0, no install.
-
-    Previously (2.2) a mismatch aborted hard. Story 2.3 converts the
-    corrupted-DOWNLOAD class to warn-not-fail: nothing installs, staging is
-    discarded, and a pre-existing binary is untouched.
-    """
+    """A corrupt download (sha mismatch) warns and exits 0 without installing: nothing installs, staging is discarded, and a pre-existing binary is untouched."""
     pin = PIN_FILE.read_text(encoding="utf-8").strip()
     # Pre-existing installed binary must survive the warned run untouched.
     pre_install = tmp_path / "preinstall"
@@ -1039,12 +996,7 @@ def test_checksum_mismatch_warns_not_fails(tmp_path):
 
 
 def test_self_check_failure_warns_and_rolls_back(tmp_path):
-    """AC-03: installed binary failing the version self-check -> warn + exit 0.
-
-    The static stub always reports a foreign version: the idempotency gate
-    passes (not matching), install proceeds, self-check fails, rollback fires,
-    and setup exits 0 with a warning (never crashes).
-    """
+    """installed binary failing the version self-check -> warn + exit 0. The static stub always reports a foreign version: the idempotency gate passes (not matching), install proceeds, self-check fails, rollback fires, and setup exits 0 with a warning (never crashes)."""
     proc, install_dir, _bin, _vlog, _log = _run_full(
         tmp_path,
         version_text="rtk 9.9.9-fake-corrupt",
@@ -1056,12 +1008,7 @@ def test_self_check_failure_warns_and_rolls_back(tmp_path):
 
 
 def test_warned_setup_leaves_snapshot_clean(tmp_path):
-    """AC-02/AC-05: after warned exit-0 runs the plugin tree has no new files.
-
-    Captures the full plugin-root snapshot before/after and asserts no
-    stray state was written into the repo (warn paths must stay read-only
-    w.r.t. the project tree).
-    """
+    """after warned exit-0 runs the plugin tree has no new files. Captures the full plugin-root snapshot before/after and asserts no stray state was written into the repo (warn paths must stay read-only w.r.t. the project tree)."""
     before = {p.relative_to(PLUGIN_ROOT): p.stat().st_mtime_ns
               for p in PLUGIN_ROOT.rglob("*") if ".pytest_cache" not in p.parts and "__pycache__" not in p.parts}
     proc, install_dir, _log, _staging = _run_network_failure(tmp_path, rc=7)
@@ -1072,11 +1019,7 @@ def test_warned_setup_leaves_snapshot_clean(tmp_path):
 
 
 def test_plan_seam_still_pure_after_warned_run(tmp_path):
-    """AC-01: a warned network run leaves --print-download-plan fully functional.
-
-    Bridge guard for Story 2.4: hooks may call setup.sh, then the plan seam
-    must still resolve the pin (no environment/state damage from warnings).
-    """
+    """a warned network run leaves --print-download-plan fully functional. Bridge guard for: hooks may call setup.sh, then the plan seam must still resolve the pin (no environment/state damage from warnings)."""
     proc, _install_dir, _log, _staging = _run_network_failure(tmp_path, rc=28)
     assert proc.returncode == 0, _combined(proc)
     tag = PIN_FILE.read_text(encoding="utf-8").strip()
@@ -1086,14 +1029,7 @@ def test_plan_seam_still_pure_after_warned_run(tmp_path):
 
 
 def test_classification_separation_network_vs_integrity(tmp_path):
-    """AC-05: the two failure classes must never invert.
-
-    CR-2.1-D7 (full fail-fast parametrization) consumed here: the same run
-    shape, one knob switched — network failure exits 0+warning, integrity
-    failure exits non-zero+error. A single test pinning both directions in
-    one place is the cheapest guard against an over-broad resilience
-    conversion (e.g. converting sha256 mismatch by accident).
-    """
+    """the two failure classes must never invert. (full fail-fast parametrization) consumed here: the same run shape, one knob switched — network failure exits 0+warning, integrity failure exits non-zero+error. A single test pinning both directions in one place is the cheapest guard against an over-broad resilience conversion (e.g. converting sha256 mismatch by accident)."""
     # (a) network failure -> exit 0 + warning (own sub-root)
     net_proc, net_install, _log, _st = _run_network_failure(
         tmp_path / "net", rc=22)
@@ -1116,13 +1052,7 @@ def test_classification_separation_network_vs_integrity(tmp_path):
 
 
 def test_sha_mismatch_never_converts(tmp_path):
-    """AC-05 explicit separation pin: SHA-256 mismatch stays in the WARN class
-    (corrupted download is availability-shaped, AC-02) while NO-ENTRY stays
-    fail-hard (integrity manifest corruption is a format/integrity error).
-
-    This pins the exact boundary of the conversion against accidental
-    whole-script resilience (e.g. wrapping everything in `|| warn`).
-    """
+    """explicit separation pin: SHA-256 mismatch stays in the WARN class (corrupted download is availability-shaped, ) while NO-ENTRY stays fail-hard (integrity manifest corruption is a format/integrity error). This pins the exact boundary of the conversion against accidental whole-script resilience (e.g. wrapping everything in `|| warn`)."""
     pin = PIN_FILE.read_text(encoding="utf-8").strip()
     # mismatch -> warn + exit 0
     proc, install_dir, _bin, _vlog, _log = _run_full(
@@ -1133,11 +1063,7 @@ def test_sha_mismatch_never_converts(tmp_path):
 
 
 def test_no_checksums_entry_stays_fail_hard(tmp_path):
-    """AC-05: checksums.txt without the tarball entry is a format error (hard).
-
-    Complements test_sha_mismatch_never_converts: a checksums file that is
-    present but does not describe the pinned asset is NOT a network failure.
-    """
+    """checksums.txt without the tarball entry is a format error (hard). Complements test_sha_mismatch_never_converts: a checksums file that is present but does not describe the pinned asset is NOT a network failure."""
     bin_dir, argv_log = _stub_bin_dir(tmp_path)
     tmp_path.joinpath("assets-src").mkdir(exist_ok=True)
     assets = _stage_fixture_assets(tmp_path)
@@ -1163,16 +1089,7 @@ def test_no_checksums_entry_stays_fail_hard(tmp_path):
 
 
 def test_agent_fail_open_bridge_pointer(tmp_path):
-    """AC-04: runtime consequence is covered by the Epic 1 fail-open suite.
-
-# ---------------------------------------------------------------------------
-
-    Story 2.3 owns setup.sh only; the runtime contract (agent stays fully
-    functional with uncompressed commands when rtk is absent) is proven by
-    tests/test_rtk_intercept.py in the framework runtime. This guard fails
-    if that suite disappears or is renamed — the cross-epic bridge must stay
-    traceable to a real file.
-    """
+    """Setup.sh owns provisioning only. The runtime contract - the agent stays fully functional with uncompressed commands when rtk is absent - is proven by the intercept test suite in the framework runtime; this guard fails if that suite disappears or is renamed."""
     intercept_suite = PLUGIN_ROOT / "tests" / "test_rtk_intercept.py"
     assert intercept_suite.is_file(), "AC-04 bridge: intercept test suite must exist"
     src = intercept_suite.read_text(encoding="utf-8")
@@ -1180,8 +1097,8 @@ def test_agent_fail_open_bridge_pointer(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# CR 2.3 regression tests (blind M-2/edge T17/T18v2/auditor #2-#4):
-# install-surface and AC-05 classification boundaries pinned by the review.
+# regression tests (/T18v2/-#4):
+# install-surface and classification boundaries pinned by the review.
 # Each test below fails if its corresponding in-review patch is reverted
 # (mutation-kill validated in the CR record).
 # ---------------------------------------------------------------------------
@@ -1190,8 +1107,7 @@ def test_agent_fail_open_bridge_pointer(tmp_path):
 
 
 def test_install_target_symlink_is_refused(tmp_path):
-    """CR-2.3 blind M-3/edge T17: a pre-planted symlink at the install path
-    must be refused before cp writes through it."""
+    """a pre-planted symlink at the install path must be refused before cp writes through it."""
     tmp_path.joinpath("assets-src").mkdir(exist_ok=True)
     assets = _stage_fixture_assets(tmp_path)
     repo = _fixture_repo(tmp_path)
@@ -1214,8 +1130,7 @@ def test_install_target_symlink_is_refused(tmp_path):
 
 
 def test_install_target_directory_is_refused(tmp_path):
-    """CR-2.3 edge T16v2: a directory at the install path must be refused
-    (cp would nest the binary inside it and rollback rm -f would fail)."""
+    """v2: a directory at the install path must be refused (cp would nest the binary inside it and rollback rm -f would fail)."""
     tmp_path.joinpath("assets-src").mkdir(exist_ok=True)
     assets = _stage_fixture_assets(tmp_path)
     repo = _fixture_repo(tmp_path)
@@ -1235,12 +1150,7 @@ def test_install_target_directory_is_refused(tmp_path):
 
 
 def test_install_surface_failure_warns_not_fails(tmp_path):
-    """CR-2.3 edge E_t3/C_t4 + auditor #3 (convergent layers): an
-    install-surface failure (cp mid-write failure / unwritable INSTALL_DIR)
-    must classify as AVAILABILITY — warn + exit 0, no partial garbage binary
-    left on PATH, and any pre-existing binary restored. Previously this
-    exited 1 under set -e, which the exit contract reserves for integrity
-    corruption (and Story 2.4 hooks would hard-fail on it)."""
+    """An install-surface failure (mid-write copy failure or unwritable install dir) must classify as availability: warn and exit 0, leave no partial binary on PATH, and restore any pre-existing binary. Previously this exited 1, which the exit contract reserves for integrity corruption."""
     tmp_path.joinpath("assets-src").mkdir(exist_ok=True)
     assets = _stage_fixture_assets(tmp_path)
     repo = _fixture_repo(tmp_path)
@@ -1292,8 +1202,7 @@ def test_install_surface_failure_warns_not_fails(tmp_path):
 
 
 def test_install_surface_failure_without_pre_existing_removes_partial(tmp_path):
-    """CR-2.3 control for the install-surface patch: with NO pre-existing
-    binary a failed install must remove the partial copy, leaving nothing."""
+    """control for the install-surface patch: with NO pre-existing binary a failed install must remove the partial copy, leaving nothing."""
     tmp_path.joinpath("assets-src").mkdir(exist_ok=True)
     assets = _stage_fixture_assets(tmp_path)
     repo = _fixture_repo(tmp_path)
@@ -1332,9 +1241,7 @@ def test_install_surface_failure_without_pre_existing_removes_partial(tmp_path):
 
 
 def test_pre_existing_binary_restored_on_self_check_failure(tmp_path):
-    """CR-2.3 edge T18v2 + blind M-2 (convergent): when the self-check fails
-    after install, the rollback must restore the pre-existing working binary
-    rather than delete it — the host must not end up worse than before."""
+    """When the self-check fails after install, rollback restores the pre-existing working binary rather than deleting it, so the host never ends up worse than before."""
     tmp_path.joinpath("assets-src").mkdir(exist_ok=True)
     assets = _stage_fixture_assets(tmp_path)
     repo = _fixture_repo(tmp_path)
@@ -1361,8 +1268,7 @@ def test_pre_existing_binary_restored_on_self_check_failure(tmp_path):
 
 
 def test_self_check_failure_without_pre_existing_rolls_back_clean(tmp_path):
-    """CR-2.3 control for the restore patch: with NO pre-existing binary the
-    rollback must still remove the wrong-version install (old behavior)."""
+    """control for the restore patch: with NO pre-existing binary the rollback must still remove the wrong-version install (old behavior)."""
     proc, install_dir, _bin, _vlog, _log = _run_full(
         tmp_path, version_text="rtk 9.9.9-fake-corrupt")
     assert proc.returncode == 0, _combined(proc)
@@ -1370,9 +1276,7 @@ def test_self_check_failure_without_pre_existing_rolls_back_clean(tmp_path):
 
 
 def test_missing_checksums_warns_not_fails(tmp_path):
-    """CR-2.3 auditor #6/Task 2.3: the CONVERTED missing-checksums-FILE
-    availability branch (checksums never downloaded) must be pinned — the
-    legacy no-entry integrity test never reaches this branch."""
+    """The missing-checksums-file availability branch (checksums never downloaded) must be pinned; the legacy no-entry integrity test never reaches this branch."""
     tmp_path.joinpath("assets-src").mkdir(exist_ok=True)
     tarball, digest = _make_fake_tarball(tmp_path / "assets-src")
     assets = tmp_path / "assets"
@@ -1411,10 +1315,7 @@ def test_missing_checksums_warns_not_fails(tmp_path):
 
 
 def test_failure_classification_structural_audit():
-    """CR-2.3 auditor #5/Task 1.5 (claimed done, never implemented): the
-    structural audit of every exit site in setup.sh — availability branches
-    route through rtk_unavailable (exit 0); integrity/usage branches are raw
-    exit 1/2 after an error line. Guards against over-broad conversion."""
+    """A structural audit of every exit site in setup.sh: availability branches route through the warn-not-fail helper (exit 0), while integrity and usage branches are raw nonzero exits after an error line. Guards against over-broad conversion."""
     src = SETUP.read_text(encoding="utf-8")
     lines = src.splitlines()
     # Availability call sites: rtk_unavailable invocations (not its definition).
@@ -1436,9 +1337,7 @@ def test_failure_classification_structural_audit():
 
 
 def test_no_broad_resilience_conversion(tmp_path):
-    """CR-2.3 AC-05 boundary: the malformed-pin class must stay fail-hard
-    even while every availability class warns — pins against a future patch
-    that wraps everything in `|| rtk_unavailable`."""
+    """boundary: the malformed-pin class must stay fail-hard even while every availability class warns — pins against a future patch that wraps everything in `|| rtk_unavailable`."""
     repo = _fixture_repo(tmp_path)
     (repo / "rtk_pin.txt").write_text("garbage-pin\n", encoding="utf-8")
     bin_dir, argv_log = _stub_bin_dir(tmp_path)
@@ -1454,8 +1353,7 @@ def test_no_broad_resilience_conversion(tmp_path):
 
 
 def test_staged_tarball_missing_before_verify_warns(tmp_path):
-    """CR-2.3 auditor #2: a tarball that vanished before verification must
-    classify as availability (a set -e exit reads as integrity corruption)."""
+    """a tarball that vanished before verification must classify as availability (a set -e exit reads as integrity corruption)."""
     tmp_path.joinpath("assets-src").mkdir(exist_ok=True)
     assets = _stage_fixture_assets(tmp_path)
     repo = _fixture_repo(tmp_path)

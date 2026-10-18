@@ -1,8 +1,8 @@
-# Story 3.5 AC-05 / NFR12-D5: the pin lives ONLY in rtk_pin.txt.
+# The pin lives only in rtk_pin.txt.
 id: no-hardcoded-pin-outside-pin-file
 language: python
 severity: error
-message: "hardcoded version literal - the pin lives only in rtk_pin.txt (NFR12/D5)"
+message: "hardcoded version literal - the pin lives only in rtk_pin.txt"
 rule:
   kind: string
   regex: 'v[0-9]+\.[0-9]+\.[0-9]+'

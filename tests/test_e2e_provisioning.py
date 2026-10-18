@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Story 2.5 E2E: real-container provisioning verification (AC-01..AC-04).
-
-Pure runtime — no framework imports (runs under /opt/venv).
-HOST-STATE ISOLATED (CR-2.4-D1): every test constructs its PATH explicitly;
-no test inherits the host PATH implicitly, so the suite is deterministic
-whether or not a real rtk exists on the container at /usr/local/bin/rtk.
-"""
+"""End-to-end checks for real-container provisioning. Pure runtime, no framework imports. Host-state isolated: every test builds its PATH explicitly, so the suite is deterministic whether or not a real rtk exists on the container."""
 import importlib.util
 import os
 import shutil
@@ -18,7 +12,7 @@ import pytest
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 SETUP = PLUGIN_ROOT / "scripts" / "setup.sh"
 HOOKS = PLUGIN_ROOT / "hooks.py"
-PIN = (PLUGIN_ROOT / "rtk_pin.txt").read_text().strip()  # single source (NFR12)
+PIN = (PLUGIN_ROOT / "rtk_pin.txt").read_text().strip()  # single source
 VERSION = PIN[1:] if PIN.startswith("v") else PIN  # setup.sh: VERSION=${PIN#v}
 
 
@@ -52,7 +46,7 @@ def _elf_is_static(path):
 
 @pytest.fixture()
 def stub_dir(tmp_path):
-    """A controlled PATH stub dir the test fully owns (CR-2.4-D1 isolation)."""
+    """A controlled PATH stub dir the test fully owns ( isolation)."""
     d = tmp_path / "cbindir"
     d.mkdir()
     return d
@@ -63,9 +57,7 @@ def _path_with(dirs):
 
 
 def test_real_binary_static_and_pinned_version():
-    """AC-01: the real rtk on this container runs, prints the pinned version
-    (no v-prefix, CR-2.2 live finding), and is statically linked (musl, no
-    glibc dependency). Skips only when rtk is absent from THIS test's PATH."""
+    """the real rtk on this container runs, prints the pinned version (no v-prefix, live finding), and is statically linked (musl, no glibc dependency). Skips only when rtk is absent from THIS test's PATH."""
     rtk = shutil.which("rtk", path=_path_with(["/usr/local/bin", "/usr/bin", "/bin"]))
     if rtk is None:
         pytest.skip("real rtk not present on this container (fresh-container state)")
@@ -73,15 +65,12 @@ def test_real_binary_static_and_pinned_version():
                          encoding="utf-8")
     assert out.returncode == 0
     assert out.stdout.strip() == f"rtk {VERSION}", out.stdout
-    # AC-01 static-link evidence: no PT_INTERP in the ELF.
+    # static-link evidence: no PT_INTERP in the ELF.
     assert _elf_is_static(rtk), f"{rtk} is not statically linked (glibc dependency risk)"
 
 
 def test_agent_path_reachability_and_negative_control():
-    """AC-02: rtk resolves from an agent-shaped PATH (CR-2.3-D2 env shape:
-os.environ copy + pinned install dir appended when absent) and does NOT
-resolve when the install dir is absent — proving the hooks fix is load-
-bearing rather than incidental."""
+    """rtk resolves from an agent-shaped PATH ( env shape: os.environ copy + pinned install dir appended when absent) and does NOT resolve when the install dir is absent — proving the hooks fix is load- bearing rather than incidental."""
     hooks = _load_hooks()
     env = dict(os.environ)
     if not any(Path(p) == Path(hooks.INSTALL_DIR) for p in env.get("PATH", "").split(os.pathsep) if p):
@@ -100,9 +89,7 @@ bearing rather than incidental."""
 
 
 def test_hooks_install_end_to_end_idempotent(tmp_path):
-    """AC-01/AC-02/AC-03 chain: hooks.install() runs the REAL setup.sh
-    (subprocess NOT mocked) and never raises (NFR6). Network-free because
-    rtk is already present → idempotent gate skips the download."""
+    """End-to-end chain: hooks.install runs the real setup.sh with subprocess unmocked and never raises. Network-free because rtk is present and the idempotent gate skips the download."""
     hooks = _load_hooks()
     env = dict(os.environ)
     if shutil.which("rtk", path=env["PATH"]) is None:
@@ -113,10 +100,7 @@ def test_hooks_install_end_to_end_idempotent(tmp_path):
 
 
 def test_no_network_warns_and_exits_zero(tmp_path, stub_dir):
-    """AC-04: with a failing (network-denying) curl stub and rtk ABSENT from
-    PATH, setup.sh converts the availability failure to warn + exit 0
-    (Story 2.3 contract) — the plugin installs and the agent can serve
-    uncompressed."""
+    """With a network-denying curl stub and rtk absent from PATH, setup.sh converts the availability failure to a warning and exit 0: the plugin installs and the agent serves uncompressed."""
     curl = stub_dir / "curl"
     curl.write_text("#!/bin/sh\necho 'curl: (6) could not resolve host' >&2\nexit 6\n")
     curl.chmod(0o755)
@@ -134,8 +118,7 @@ def test_no_network_warns_and_exits_zero(tmp_path, stub_dir):
 
 
 def test_no_cross_platform_fallbacks():
-    """AC-04/FR28 structural pin: no win32/darwin/msys/cygwin fallback logic
-    in setup.sh or hooks.py — Linux-container-only support."""
+    """Structural pin: no Windows/macOS fallback logic in setup.sh or hooks.py; Linux-container-only support."""
     import re
     pat = re.compile(r"win32|win64|msys|cygwin|darwin|macos|osx|needs? ?windows", re.I)
     for f in (SETUP, HOOKS):
@@ -144,12 +127,10 @@ def test_no_cross_platform_fallbacks():
 
 
 def test_onboarding_under_5_minutes():
-    """AC-03: clone-shaped setup (idempotent gate with rtk present) plus a
-    real delegated rewrite chain completes well under 5 minutes. The real
-    download variant is network-gated (RTK_E2E_NETWORK=1, Task 7 only)."""
+    """A clone-shaped setup (idempotent gate with rtk present) plus a real delegated rewrite chain completes well under five minutes. The real-download variant stays network-gated."""
     t0 = time.time()
     hooks = _load_hooks()
-    # CR-2.5 review: resolve rtk through the suite's controlled PATH so a
+    # review: resolve rtk through the suite's controlled PATH so a
     # foreign rtk version on the inherited host PATH cannot skew the result.
     rtk_bin = shutil.which("rtk", path=_path_with(["/usr/local/bin", "/usr/bin", "/bin"]))
     if rtk_bin is None:
@@ -163,9 +144,7 @@ def test_onboarding_under_5_minutes():
 
 @pytest.mark.skipif(not os.environ.get("RTK_E2E_NETWORK"), reason="network smoke test is opt-in (RTK_E2E_NETWORK=1)")
 def test_real_download_smoke():
-    """Network-gated smoke: run the full setup chain in an isolated env that
-    removes any pre-installed rtk from PATH, forcing the real download,
-    verify the pinned sha256 asset verifies and installs (AC-01 full chain)."""
+    """Network-gated smoke: run the full setup chain in an isolated env that removes any pre-installed rtk from PATH, forcing the real download, verify the pinned sha256 asset verifies and installs ( full chain)."""
     staging = Path("/tmp/rtk-a0-staging")  # pinned staging contract (2.1)
     install_dir = Path("/usr/local/bin")
     env = dict(os.environ)
@@ -183,13 +162,7 @@ def test_real_download_smoke():
 
 
 def test_real_rewrite_rc3_observation():
-    """Dogfooding trigger 3 — Story 3.1 AC-05/AC-06 inversion (ADR-006):
-    the REAL rtk 1.0.1 `rewrite` exits 3 on a default container (its own
-    docs: 'rewrite printed, allow rules do not cover every command' — rtk
-    defers approval to the host). Per ADR-006 Option A, the extension now
-    treats rc 3 as rewrite-AVAILABLE and mutates. Previously pinned as an
-    OBSERVATION of rc-3-DROP (raw-subprocess probe); inverted in Story 3.1
-    to drive the extension itself and assert mutation under rc 3."""
+    """Dogfooding trigger 3 — inversion: the REAL rtk 1.0.1 `rewrite` exits 3 on a default container (its own docs: 'rewrite printed, allow rules do not cover every command' — rtk defers approval to the host). Per Option A, the extension now treats rc 3 as rewrite-AVAILABLE and mutates. Previously pinned as an OBSERVATION of rc-3-DROP (raw-subprocess probe); inverted in to drive the extension itself and assert mutation under rc 3."""
     rtk = shutil.which("rtk", path=_path_with(["/usr/local/bin", "/usr/bin", "/bin"]))
     if rtk is None:
         pytest.skip("real rtk not present")
@@ -199,10 +172,10 @@ def test_real_rewrite_rc3_observation():
                          text=True, encoding="utf-8")
     assert raw.stdout.strip() == "rtk git status"
     assert raw.returncode in (0, 3)  # 0 delegate mode; 3 default container
-    # Drive the extension: with rc 3 accepted (ADR-006), the rewrite applies.
+    # Drive the extension: with rc 3 accepted, the rewrite applies.
     # The extension imports `helpers.extension` (framework-only): skip this half
     # cleanly under the pure runtime, and isolate the PATH so availability sees
-    # the same controlled binary even with the host PATH stripped (CR-2.4-D1).
+    # the same controlled binary even with the host PATH stripped.
     try:
         ext_spec = importlib.util.spec_from_file_location(
             "_10_rtk_intercept_e2e_prov",
@@ -222,11 +195,7 @@ def test_real_rewrite_rc3_observation():
 
 
 def test_real_rewrite_never_executes_command():
-    """Grandchild-pipe revisit (CR-2.4-D2, dogfooding trigger 2): a command
-    that spawns a sleeping grandchild would hold the parent pipe open on an
-    EXECUTING rewrite. The real binary never executes — it only prints the
-    rewritten form — so the rewrite returns in ms and no pipe-hold exists.
-    Pinned here as the in-suite evidence for the CR-2.4-D2 resolution."""
+    """Grandchild-pipe revisit (, dogfooding trigger 2): a command that spawns a sleeping grandchild would hold the parent pipe open on an EXECUTING rewrite. The real binary never executes — it only prints the rewritten form — so the rewrite returns in ms and no pipe-hold exists. Pinned here as the in-suite evidence for the resolution."""
     rtk = shutil.which("rtk", path=_path_with(["/usr/local/bin", "/usr/bin", "/bin"]))
     if rtk is None:
         pytest.skip("real rtk not present")
@@ -241,11 +210,7 @@ def test_real_rewrite_never_executes_command():
 
 
 def test_real_command_output_reduction_measurement(tmp_path):
-    """Dogfooding trigger 1 (60% compression, PRD success criterion):
-    measure REAL rtk proxy output reduction vs raw commands on this
-    container. Reduction > 0 is the behavioral pin; per-command actuals are
-    recorded in the Dev Agent Record. Threshold reporting is an OBSERVATION
-    (measurement below 60% is evidence, not necessarily a code defect)."""
+    """Dogfooding trigger 1 (60% compression, success criterion): measure REAL rtk proxy output reduction vs raw commands on this container. Reduction > 0 is the behavioral pin; per-command actuals are recorded in the Dev Agent Record. Threshold reporting is an OBSERVATION (measurement below 60% is evidence, not necessarily a code defect)."""
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q", str(repo)])
@@ -263,12 +228,12 @@ def test_real_command_output_reduction_measurement(tmp_path):
         assert raw.returncode == 0 and comp.returncode == 0, (cmd, rtk_cmd)
         return len(raw.stdout), len(comp.stdout)
 
-    # CR-2.4-D1: locate rtk through the controlled PATH used by this suite
+    # locate rtk through the controlled PATH used by this suite
     rtk_bin = shutil.which("rtk", path=_path_with(
         ["/usr/local/bin", "/usr/bin", "/bin"]))
     if rtk_bin is None:
         pytest.skip("real rtk not present — compression measurement needs it")
-    # CR-2.5 review: measure the SAME command set the Dev Agent Record
+    # review: measure the SAME command set the Dev Agent Record
     # reports (git status, ls -la, plain ls) so the in-suite evidence
     # reproduces every recorded figure, including the honest ls-expansion
     # counter-example. Vacuous-pass guards: raw must be non-empty and the
@@ -287,7 +252,7 @@ def test_real_command_output_reduction_measurement(tmp_path):
         if reduction > 0:
             compressing += 1
         print(f"MEASURED {label}: {raw_n} -> {comp_n} bytes ({reduction:+.1f}%)")
-    # git status is the PRD >=60% anchor: it must genuinely compress.
+    # git status is the >=60% anchor: it must genuinely compress.
     gs_raw, gs_comp = measure(["git", "status"], [rtk_bin, "git", "status"])
     gs_reduction = 100 * (1 - gs_comp / gs_raw)
     print(f"MEASURED PRD anchor git status: {gs_raw} -> {gs_comp} bytes ({gs_reduction:.1f}% reduction)")

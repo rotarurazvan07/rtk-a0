@@ -46,7 +46,7 @@ RTK maintains its own savings ledger; the plugin surfaces its output unchanged.
 Read **Tokens saved** and the per-command table to see cumulative and
 per-command reductions.
 
-Measured examples from Story 2.5 dogfooding on this container (not guarantees):
+Measured examples on this container (not guarantees):
 
 | Command | Before | After | Reduction |
 | --- | --- | --- | --- |
@@ -133,7 +133,7 @@ if the installed version has drifted from the pin in `rtk_pin.txt`.
 This plugin is licensed **Apache-2.0** (see `LICENSE`). RTK itself is an
 **external BUSL-1.1 dependency**, used **orchestration-only**: the plugin
 downloads the RTK binary at setup time and invokes it as
-`rtk rewrite <command>` — it never vendors, embeds, or reimplements RTK code. Support scope: **Linux containers only** (FR28) — the
+`rtk rewrite <command>` — it never vendors, embeds, or reimplements RTK code. Support scope: **Linux containers only** - the
 pinned release is the x86_64 musl static Linux build. The full compliance note
 lives in [docs/licensing-boundary.md](docs/licensing-boundary.md).
 

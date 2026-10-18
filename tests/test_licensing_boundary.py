@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Story 3.5 - licensing-boundary & official-extension compliance (FR25/26/27, NFR9/NFR12).
-
-Pure-runtime structural scans: network-free, host-state independent (no rtk binary).
-Scans the plugin's OWN tree only (tests/ and .a0proj/ excluded from purity scans).
-Lessons honored:
-- Story 3.2/3.4: FR25 needle 'from rtk' tripped on prose -> needles match CODE
-  only (comments/docstrings stripped via ast), never documentation text.
-- Story 1.5: needle convention (hermes/rtk_ai/import rtk/from rtk) reused.
-"""
+"""Licensing-boundary and official-extension compliance checks. Pure-runtime structural scans: network-free, host-state independent, scanning only the plugin's own tree. Lessons honored: vendoring needles match code with comments stripped, never documentation prose."""
 import ast
 import shutil
 import subprocess
@@ -25,40 +17,40 @@ SKIP_DIRS = {
 
 NEEDLES = ("hermes", "rtk_ai", "import rtk", "from rtk")
 # Module-name needles for STRUCTURAL import-node matching (concatenation and
-# f-strings cannot dodge these - CR-3.5 F7/M3 fix). Avoids matching a module
+# f-strings cannot dodge these - /M3 fix). Avoids matching a module
 # named e.g. "smart_kit" because we match whole name segments, not substrings.
 NEEDLES_CORE = ("hermes", "rtk_ai", "rtk")
 
-# Framework source files: must never appear at ANY depth (NFR9).
+# Framework source files: must never appear at ANY depth.
 FRAMEWORK_FILE_NAMES = {"agent.py", "initialize.py", "run_ui.py", "models.py",
                        "functions.py", "parallel_tools.py"}
 # A0 core dirs: forbidden at the tree ROOT only (extensions/python/ and
 # extensions/python/tool_execute_before/ are the OFFICIAL layout and must
-# not false-positive - Story 3.5 self-caught defect #3, CR-3.5 F11).
+# not false-positive - self-caught defect #3, ).
 FRAMEWORK_ROOT_DIRS = {"helpers", "api", "webui", "plugins"}
-# Non-python plugin sources scanned for the same needle set (FR25): shell
+# Non-python plugin sources scanned for the same needle set: shell
 # provisioning + YAML/text config; comments stripped before matching.
 NEEDLE_TEXT_SUFFIXES = (".sh", ".bash", ".yaml", ".yml", ".txt", ".cfg",
                         ".toml", ".json")
-# Process-spawning entry points the delegation audit must cover (FR26):
-# attribute shapes on any subprocess binding plus the bare os.system() call.
+# Process-spawning entry points the delegation audit must cover:
+# attribute shapes on any subprocess binding plus the bare os.system call.
 RUN_ATTRS = {"run", "call", "check_call", "check_output", "Popen"}
 OS_SYSTEM_NAMES = {"os.system", "system"}
 # RTK/Hermes-derived code smuggled through dynamic import machinery (M3).
 NEEDLE_CALLS = ("__import__", "import_module")
-# Runtime framework-mutation markers (AC-03).
+# Runtime framework-mutation markers.
 FRAMEWORK_MUTATION_MARKERS = (
     "setattr(", "delattr(", "monkeypatch", "__setattr__", "__delattr__",
     "importlib.reload", "sys.modules[", "sys.modules.update",
     "sys.modules.pop", "sys.modules.setdefault",
 )
 
-# Precompiled / vendored-binary indicators (FR25: nothing precompiled shipped).
+# Precompiled / vendored-binary indicators (nothing precompiled is shipped).
 BINARY_SUFFIXES = (".tar.gz", ".tgz", ".so", ".rlib", ".dll", ".dylib",
                    ".bin", ".o", ".a", ".exe", ".zip", ".whl")
 
 # Only tolerated absolute write target outside the plugin directory: the
-# user-owned RTK binary installed by scripts/setup.sh (D4/NFR11 honesty).
+# user-owned RTK binary installed by scripts/setup.sh.
 TOLERATED_ABSOLUTE_PREFIX = "/usr/local/bin"
 
 
@@ -75,11 +67,7 @@ def _plugin_py_files():
 
 
 def _code_needle_hits(tree) -> list:
-    """Structural needle detection: import nodes + dynamic-import calls.
-
-    ast.Call/Import nodes cannot be obfuscated by concatenation, f-strings
-    or comments the way flat text can (CR-3.5 F7/M3 fix).
-    """
+    """Structural needle detection: import nodes + dynamic-import calls. ast.Call/Import nodes cannot be obfuscated by concatenation, f-strings or comments the way flat text can ( /M3 fix)."""
     hits = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -116,7 +104,7 @@ def _code_text(py_path: Path) -> str:
 
 
 def test_no_rtk_derived_code_in_plugin_sources():
-    """AC-01/FR25: no RTK/Hermes-derived tokens in plugin-owned CODE."""
+    """No vendored-toolkit tokens appear in plugin-owned code."""
     hits = []
     for p in _plugin_py_files():
         text = _code_text(p)
@@ -130,7 +118,7 @@ def test_no_rtk_derived_code_in_plugin_sources():
 
 
 def _comment_stripped_text(text_path: Path) -> str:
-    """Text with # comment lines and */ block tails removed, lowercased."""
+    """Lowercased text with comment lines removed."""
     out = []
     for line in text_path.read_text(encoding="utf-8",
                                     errors="replace").splitlines():
@@ -142,9 +130,7 @@ def _comment_stripped_text(text_path: Path) -> str:
 
 
 def test_no_rtk_derived_tokens_in_plugin_text_sources():
-    """AC-01/FR25: same needle set over non-python plugin sources (shell,
-    manifests, config) with comment lines stripped - vendored code does not
-    have to be python to violate the licensing boundary (CR-3.5 F6)."""
+    """The same needle set runs over non-python sources (shell, manifests, config) with comment lines stripped: vendored code does not have to be python to violate the licensing boundary."""
     hits = []
     for p in _scanned_files():
         if p.suffix in NEEDLE_TEXT_SUFFIXES and p.suffix != ".py":
@@ -156,7 +142,7 @@ def test_no_rtk_derived_tokens_in_plugin_text_sources():
 
 
 def test_no_vendored_rtk_binaries():
-    """AC-01/FR25: zero precompiled binaries/archives vendored in the repo."""
+    """No precompiled binaries or archives are vendored in the repo."""
     bad = []
     for p in _scanned_files():
         if p.name.lower().endswith(BINARY_SUFFIXES):
@@ -171,21 +157,20 @@ def test_no_vendored_rtk_binaries():
 
 
 def test_root_license_is_apache_2_0():
-    """AC-04/FR25: plugin code is Apache-2.0 at repo root LICENSE."""
+    """Plugin code is Apache-2.0 at the repo-root LICENSE."""
     license_text = (PLUGIN_ROOT / "LICENSE").read_text(encoding="utf-8")
     assert "Apache License" in license_text, "root LICENSE must be Apache License"
     assert "Version 2.0" in license_text, "root LICENSE must state Apache Version 2.0"
 
 
 def test_all_compression_delegated_to_rtk_rewrite_binary():
-    """AC-02/FR26: every subprocess call in plugin code targets the rtk binary
-    in argv form; the plugin delegates, it never executes rewrite logic itself."""
+    """every subprocess call in plugin code targets the rtk binary in argv form; the plugin delegates, it never executes rewrite logic itself."""
     offenders = []
     for p in _plugin_py_files():
         tree = ast.parse(p.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
-            # FR26 audit surface: every subprocess entry point plus os.system
-            # (CR-3.5 F2: aliased/popen/call/check_output were unaudited before).
+            # audit surface: every subprocess entry point plus os.system
+# (: aliased/popen/call/check_output were unaudited before).
             spawning = False
             if isinstance(node, ast.Call):
                 if (isinstance(node.func, ast.Attribute)
@@ -202,7 +187,7 @@ def test_all_compression_delegated_to_rtk_rewrite_binary():
             if not spawning:
                 continue
             # os.system is NEVER sanctioned - it cannot carry an argv list
-            # (CR-3.5 F2: audit surface includes os.system as a flat offender).
+# (: audit surface includes os.system as a flat offender).
             if (isinstance(node.func, ast.Attribute)
                     and isinstance(node.func.value, ast.Name)
                     and node.func.value.id == "os"
@@ -219,14 +204,14 @@ def test_all_compression_delegated_to_rtk_rewrite_binary():
             argv = node.args[0] if node.args else None
             if not isinstance(argv, ast.List):
                 # Non-list argv tolerated ONLY in hooks.py: it runs the plugin's
-                # own scripts/setup.sh (provisioning, Story 2.4), never
-                # compression logic (FR26).
+                # own scripts/setup.sh (provisioning,), never
+                # compression logic.
                 if p.name != "hooks.py":
                     offenders.append((str(p.relative_to(PLUGIN_ROOT)), node.lineno,
                                       "non-list subprocess argv (FR26)"))
                 continue
             # Delegation targets: the 'rtk' binary or the plugin's own
-            # scripts/setup.sh (provisioning, hooks.py only - Story 2.4).
+            # scripts/setup.sh (provisioning, hooks.py only -).
             head = [ast.literal_eval(e) for e in argv.elts
                     if isinstance(e, ast.Constant)]
             argv_src = ast.unparse(argv)
@@ -242,8 +227,7 @@ def test_all_compression_delegated_to_rtk_rewrite_binary():
 
 
 def test_no_reimplemented_filter_or_translation_tables():
-    """AC-01/FR26: no command->output mapping literals (RTK filter logic lives
-    in the Rust binary; a dict of >=4 command strings means reimplementation)."""
+    """no command->output mapping literals (RTK filter logic lives in the Rust binary; a dict of >=4 command strings means reimplementation)."""
     bad = []
     for p in _plugin_py_files():
         tree = ast.parse(p.read_text(encoding="utf-8"))
@@ -258,11 +242,11 @@ def test_no_reimplemented_filter_or_translation_tables():
 
 
 def test_extension_registers_via_official_named_extension_only():
-    """AC-03/FR27/NFR9: official tool_execute_before layout + Extension subclass."""
+    """official tool_execute_before layout + Extension subclass."""
     ext = PLUGIN_ROOT / "extensions" / "python" / "tool_execute_before" / "_10_rtk_intercept.py"
     assert ext.is_file(), f"official extension point file missing: {ext}"
     tree = ast.parse(ext.read_text(encoding="utf-8"))
-    # Module-anchored official import (CR-3.5 F5): record the local binding
+# Module-anchored official import : record the local binding
     # (alias or plain name) so a renamed binding is not a false positive.
     official_bindings = set()
     for n in tree.body:
@@ -278,7 +262,7 @@ def test_extension_registers_via_official_named_extension_only():
 
 
 def test_no_framework_monkeypatching():
-    """AC-03/FR27: no runtime mutation of framework modules."""
+    """no runtime mutation of framework modules."""
     markers = FRAMEWORK_MUTATION_MARKERS
     hits = []
     for p in _plugin_py_files():
@@ -286,8 +270,8 @@ def test_no_framework_monkeypatching():
         for m in markers:
             if m in text:
                 hits.append((str(p.relative_to(PLUGIN_ROOT)), m))
-        # literal_eval is a SAFE constant parser, not the eval() builtin
-        # (CR-3.5 F10: ast.literal_eval must not trip the eval( marker).
+        # literal_eval is a SAFE constant parser, not the eval builtin
+# (: ast.literal_eval must not trip the eval(marker).
         for node in ast.walk(ast.parse(p.read_text(encoding="utf-8"))):
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
                     and node.func.attr == "literal_eval"):
@@ -300,11 +284,7 @@ def test_no_framework_monkeypatching():
 
 
 def test_no_shell_true_in_plugin_sources():
-    """AC-05/D2/NFR12: no process-spawning call passes a truthy shell kwarg.
-
-    Pure-AST counterpart of the ast-grep rule that needs no binary on PATH
-    (CR-3.5 F2/F13: shell=True had no binary-free coverage).
-    """
+    """No process-spawning call passes a truthy shell kwarg. A pure-AST counterpart of the lint rule that needs no binary on PATH."""
     offenders = []
     for p in _plugin_py_files():
         for node in ast.walk(ast.parse(p.read_text(encoding="utf-8"))):
@@ -323,8 +303,7 @@ def test_no_shell_true_in_plugin_sources():
 
 
 def test_no_writes_outside_plugin_dir_except_rtk_binary():
-    """AC-03/FR27: plugin writes only inside its dir; sole external target is
-    the user-owned RTK binary installed to /usr/local/bin/rtk (setup.sh D4)."""
+    """Plugin code writes only inside its own directory; the sole external target is the user-owned RTK binary."""
     tolerated = TOLERATED_ABSOLUTE_PREFIX
     offenders = []
     for p in _plugin_py_files():
@@ -339,8 +318,7 @@ def test_no_writes_outside_plugin_dir_except_rtk_binary():
 
 
 def test_no_framework_files_in_plugin_tree():
-    """AC-03/NFR9: repo ships no A0 core source files (any depth) and no
-    A0 core dirs at the tree root (official extensions/python/ is allowed)."""
+    """repo ships no A0 core source files (any depth) and no A0 core dirs at the tree root (official extensions/python/ is allowed)."""
     found = []
     for p in _scanned_files():
         rel = p.relative_to(PLUGIN_ROOT)
@@ -350,12 +328,11 @@ def test_no_framework_files_in_plugin_tree():
 
 
 def test_plugin_git_toplevel_is_plugin_root():
-    """AC-03/NFR9 git-diff-empty check: the repo cannot contain framework files
-    because its git toplevel is the plugin root itself."""
+    """git-diff-empty check: the repo cannot contain framework files because its git toplevel is the plugin root itself."""
     if not (PLUGIN_ROOT / ".git").exists():
-        return  # no checkout: structural asserts above already cover NFR9
+        return  # no checkout: structural asserts above already cover
     if shutil.which("git") is None:
-        return  # CR-3.5 F7: no git binary -> structural asserts are the check
+        return  # F7: no git binary -> structural asserts are the check
     toplevel = subprocess.run(["git", "-C", str(PLUGIN_ROOT), "rev-parse",
                                "--show-toplevel"], capture_output=True, text=True,
                               encoding="utf-8", errors="replace", check=True)
@@ -364,9 +341,7 @@ def test_plugin_git_toplevel_is_plugin_root():
 
 
 def test_compliance_doc_licensing_boundary_statement():
-    """AC-01/AC-04: docs/licensing-boundary.md states the orchestrate-only
-    boundary: RTK BUSL-1.1 downloaded not vendored, our code Apache-2.0,
-    distribution conveys an installer not the engine."""
+    """The compliance doc states the orchestrate-only boundary: RTK (BUSL-1.1) is downloaded, not vendored, our code is Apache-2.0, and distribution conveys an installer, not the engine."""
     doc = PLUGIN_ROOT / "docs" / "licensing-boundary.md"
     assert doc.is_file(), "docs/licensing-boundary.md missing (compliance note)"
     text = doc.read_text(encoding="utf-8")
