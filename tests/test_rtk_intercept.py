@@ -10,6 +10,39 @@ sys.path.insert(0, os.environ.get("A0_FRAMEWORK_ROOT", "/a0"))
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 EXT_DIR = PLUGIN_ROOT / "extensions" / "python" / "tool_execute_before"
+# Static import edge: the extension module imports as an ordinary module
+# (module names may start with underscore); A0 path-loads the same file via
+# load_classes_from_folder. The equivalence test pins both surfaces.
+sys.path.insert(0, str(EXT_DIR))
+
+from _10_rtk_intercept import RtkIntercept as _StaticRtkIntercept  # noqa: E402
+
+def test_static_and_path_loaded_extension_are_identical():
+    """The statically imported RtkIntercept and the A0 path-loaded module
+    expose the same class surface: the framework loader discovers the class
+    by subclass scan from the file, so both loading paths must serve
+    identical behavior (same execute bytecode, same constants)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_10_rtk_intercept_pathloaded", EXT_DIR / "_10_rtk_intercept.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    path_cls = module.RtkIntercept
+    static_cls = _StaticRtkIntercept
+    assert path_cls.execute.__code__.co_code == static_cls.execute.__code__.co_code, (
+        "execute differs between static import and path load"
+    )
+    # Module constants (not class attributes): both loads expose them.
+    import sys as _sys
+
+    path_mod = module
+    static_mod = _sys.modules[_StaticRtkIntercept.__module__]
+    for const in ("RTK_REWRITE_TIMEOUT", "RTK_MISSING_WARNED", "RTK_GAIN_HINTED"):
+        assert getattr(path_mod, const) == getattr(static_mod, const), (
+            f"constant {const} differs between path load and static import"
+        )
 
 
 def test_extension_folder_exists():

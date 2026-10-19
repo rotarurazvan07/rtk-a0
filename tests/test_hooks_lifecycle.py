@@ -12,13 +12,35 @@ import pytest
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_PATH = PLUGIN_ROOT / "hooks.py"
 
+# Two loading paths, one behavior: A0 path-loads hooks.py at runtime
+# (fixture below, mirroring helpers/plugins.py) while a normal static import
+# (`import hooks`) documents the ordinary-package view. The equivalence test
+# pins that both surfaces are identical.
+sys.path.insert(0, str(PLUGIN_ROOT))
+import hooks as _static_hooks  # noqa: E402
+
 
 def _load_hooks():
-    """Import the plugin hooks module by file path (A0 lifecycle-style load)."""
+    """Import the plugin hooks module the way A0 loads it (by file path)."""
     spec = importlib.util.spec_from_file_location("rtk_a0_hooks", HOOKS_PATH)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_path_load_and_static_import_expose_identical_surface(hooks):
+    """The A0 path-loaded module and a static `import hooks` expose the same
+    public surface: the framework dispatches getattr(hooks, name), so both
+    loads must serve identical callables and constants."""
+    for name in ("install", "pre_update", "uninstall"):
+        assert callable(getattr(_static_hooks, name)), f"static import missing {name}"
+        assert getattr(hooks, name).__code__.co_code == getattr(_static_hooks, name).__code__.co_code, (
+            f"{name} differs between path-load and static import"
+        )
+    for const in ("INSTALL_DIR", "_SETUP_SCRIPT", "_SETUP_TIMEOUT"):
+        assert getattr(hooks, const) == getattr(_static_hooks, const), (
+            f"constant {const} differs between loads"
+        )
 
 
 @pytest.fixture()

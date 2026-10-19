@@ -134,6 +134,14 @@ Uninstalling the plugin removes the plugin files only. The RTK binary at
 yourself if you want it gone. On plugin update, setup re-provisions the binary
 if the installed version has drifted from the pin in `rtk_pin.txt`.
 
+## Code health
+
+Static analysis (desloppify, 20-dimension holistic review): **overall 90.3/100**,
+mechanical 95.6/100, subjective 88.5/100. File health, duplication, security,
+and test coverage all score 100%.
+
+<img src="scorecard.png" width="100%">
+
 ## License
 
 This plugin is licensed **Apache-2.0** (see `LICENSE`). RTK itself is an
