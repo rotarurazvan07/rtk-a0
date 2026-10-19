@@ -43,6 +43,123 @@ def test_path_load_and_static_import_expose_identical_surface(hooks):
         )
 
 
+# ---------------------------------------------------------------------------
+# — emit/desc fault branches (the real emitter, not a monkeypatched sink)
+# ---------------------------------------------------------------------------
+
+class _BrokenStderr:
+    """stderr stand-in whose writes fail the way a closed pipe does:
+    ValueError (not OSError) on CPython."""
+
+    def write(self, *args, **kwargs):
+        raise ValueError("I/O operation on closed file")
+
+    def flush(self):
+        pass
+
+
+def test_emit_swallows_broken_stderr_on_all_levels(hooks, monkeypatch):
+    """The real _Style emitter must swallow a failing stderr write at every
+    level: a closed stderr raises ValueError, and logging can never break a
+    hook (this is the branch monkeypatched sinks bypass)."""
+    monkeypatch.setattr(hooks.sys, "stderr", _BrokenStderr())
+    assert hooks._style.info("x") is None
+    assert hooks._style.warning("x") is None
+    assert hooks._style.error("x") is None
+
+
+class _EvilStr:
+    """Exception whose __str__ raises."""
+
+    def __str__(self):
+        raise ValueError("unprintable")
+
+
+class _EvilName(_EvilStr, metaclass=type):
+    pass
+
+
+class _EvilMeta(type):
+    @property
+    def __name__(cls):
+        raise RuntimeError("no name")
+
+
+class _EvilBoth(metaclass=_EvilMeta):
+    def __str__(self):
+        raise ValueError("unprintable")
+
+
+def test_desc_handles_unprintable_exception(hooks):
+    """_desc must render an exception whose __str__ raises without itself
+    raising: type-name fallback, then the final guard."""
+    assert hooks._desc(_EvilStr()) == "_EvilStr (unprintable)"
+    assert hooks._desc(_EvilBoth()) == "<unprintable exception>"
+
+
+def test_install_warns_on_setup_timeout(hooks, monkeypatch):
+    """TimeoutExpired has its own handler with the 120s message."""
+    rec = _install_style(hooks, monkeypatch)
+
+    def _raise_timeout(argv, **kwargs):
+        raise subprocess.TimeoutExpired("bash", 120)
+
+    monkeypatch.setattr(hooks.subprocess, "run", _raise_timeout)
+    assert hooks.install() is None
+    assert any("exceeded 120s" in t for t in rec.texts), rec.texts
+
+
+class _EvilEq(str):
+    """String whose equality comparison raises."""
+
+    def __eq__(self, other):
+        raise RuntimeError("boom")
+
+    def __ne__(self, other):
+        raise RuntimeError("boom")
+
+
+class _EvilPin(str):
+    """Pin token whose comparison against installed raises."""
+
+    def __eq__(self, other):
+        raise RuntimeError("boom")
+
+    def __ne__(self, other):
+        raise RuntimeError("boom")
+
+
+def test_pre_update_outer_guard_degrades_on_comparison_fault(hooks, monkeypatch):
+    """A fault outside both inner handlers (in the version comparison) must
+    reach the outer never-raise guard and degrade to a warning."""
+    rec = _install_style(hooks, monkeypatch)
+    monkeypatch.setattr(hooks, "_installed_version", lambda: _EvilEq("9.9.9"))
+    monkeypatch.setattr(hooks, "_pin_version", lambda: _EvilPin("1.0.1"))
+    assert hooks.pre_update() is None
+    assert any("pre_update degraded" in t for t in rec.texts), rec.texts
+
+
+def test_uninstall_outer_guard_degrades_when_message_construction_faults(hooks, monkeypatch):
+    """A fault while building the uninstall message (before _say) must reach
+    the outer guard: warn and return, never propagate."""
+    rec = _install_style(hooks, monkeypatch)
+
+    def _boom():
+        raise OSError("install dir unreadable")
+
+    monkeypatch.setattr(hooks, "_install_dir", _boom)
+    assert hooks.uninstall() is None
+    assert any("uninstall degraded" in t for t in rec.texts), rec.texts
+
+
+def test_emergency_swallows_when_stderr_itself_fails(hooks, monkeypatch):
+    """The last-resort _emergency write must stay silent when stderr is
+    already broken: the never-raise contract cannot depend on a working
+    stderr, so this path swallows instead of raising."""
+    monkeypatch.setattr(hooks.sys, "stderr", _BrokenStderr())
+    assert hooks._emergency("x") is None
+
+
 @pytest.fixture()
 def hooks():
     return _load_hooks()

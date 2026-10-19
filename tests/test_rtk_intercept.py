@@ -17,6 +17,19 @@ sys.path.insert(0, str(EXT_DIR))
 
 from _10_rtk_intercept import RtkIntercept as _StaticRtkIntercept  # noqa: E402
 
+def test_non_dict_tool_args_is_ignored():
+    """Guard 2: a non-dict tool_args (None from a defensive dispatcher, list,
+    string) passes through untouched — no mutation, no raise. Covers the
+    isinstance branch the CI coverage gate flagged."""
+    ext = _load_ext()
+    agent = type("A", (), {"data": {}})()
+    for bad in (None, ["rtk"], "terminal", 42):
+        ext.execute("code_execution_tool", bad, agent=agent)
+        ext.execute("code_execution_tool", bad)
+    # dict-shaped but non-terminal still returns early via later guards;
+    # the non-dict shapes above are the only ones reaching this branch.
+
+
 def test_static_and_path_loaded_extension_are_identical():
     """The statically imported RtkIntercept and the A0 path-loaded module
     expose the same class surface: the framework loader discovers the class
