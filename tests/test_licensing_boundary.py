@@ -13,6 +13,7 @@ ELF_MAGIC = bytes.fromhex("7f454c46")
 SKIP_DIRS = {
     ".git", ".a0proj", "tests", "_bmad", "__pycache__", ".pytest_cache",
     ".serena", "venv", ".venv", "node_modules", "docs", ".github",
+    ".desloppify", ".neuralmind",
 }
 
 NEEDLES = ("hermes", "rtk_ai", "import rtk", "from rtk")

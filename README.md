@@ -8,6 +8,13 @@ binary — it never vendors or reimplements it.
 
 ## Install
 
+**Prerequisites** — a Linux container with these standard tools already
+present: `bash`, `curl`, `tar`, `sha256sum`, `awk`, `find`, `mktemp`. The
+plugin targets x86_64 Linux only; the provisioned binary is a static musl
+build, so no further runtime libraries are needed. A missing tool surfaces
+as a one-line setup warning and the agent keeps working uncompressed — the
+commands themselves continue to run either way.
+
 **Plugin Hub** — search for **rtk** in Agent Zero's Plugin Hub and install.
 The plugin is default-on (no settings to toggle).
 
@@ -126,6 +133,14 @@ Uninstalling the plugin removes the plugin files only. The RTK binary at
 `/usr/local/bin/rtk` is treated as user-owned and left in place — remove it
 yourself if you want it gone. On plugin update, setup re-provisions the binary
 if the installed version has drifted from the pin in `rtk_pin.txt`.
+
+## Code health
+
+Static analysis (desloppify, 20-dimension holistic review): **overall 90.3/100**,
+mechanical 95.6/100, subjective 88.5/100. File health, duplication, security,
+and test coverage all score 100%.
+
+<img src="scorecard.png" width="100%">
 
 ## License
 

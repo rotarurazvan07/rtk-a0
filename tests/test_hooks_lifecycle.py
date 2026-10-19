@@ -12,13 +12,152 @@ import pytest
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_PATH = PLUGIN_ROOT / "hooks.py"
 
+# Two loading paths, one behavior: A0 path-loads hooks.py at runtime
+# (fixture below, mirroring helpers/plugins.py) while a normal static import
+# (`import hooks`) documents the ordinary-package view. The equivalence test
+# pins that both surfaces are identical.
+sys.path.insert(0, str(PLUGIN_ROOT))
+import hooks as _static_hooks  # noqa: E402
+
 
 def _load_hooks():
-    """Import the plugin hooks module by file path (A0 lifecycle-style load)."""
+    """Import the plugin hooks module the way A0 loads it (by file path)."""
     spec = importlib.util.spec_from_file_location("rtk_a0_hooks", HOOKS_PATH)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_path_load_and_static_import_expose_identical_surface(hooks):
+    """The A0 path-loaded module and a static `import hooks` expose the same
+    public surface: the framework dispatches getattr(hooks, name), so both
+    loads must serve identical callables and constants."""
+    for name in ("install", "pre_update", "uninstall"):
+        assert callable(getattr(_static_hooks, name)), f"static import missing {name}"
+        assert getattr(hooks, name).__code__.co_code == getattr(_static_hooks, name).__code__.co_code, (
+            f"{name} differs between path-load and static import"
+        )
+    for const in ("INSTALL_DIR", "_SETUP_SCRIPT", "_SETUP_TIMEOUT"):
+        assert getattr(hooks, const) == getattr(_static_hooks, const), (
+            f"constant {const} differs between loads"
+        )
+
+
+# ---------------------------------------------------------------------------
+# — emit/desc fault branches (the real emitter, not a monkeypatched sink)
+# ---------------------------------------------------------------------------
+
+class _BrokenStderr:
+    """stderr stand-in whose writes fail the way a closed pipe does:
+    ValueError (not OSError) on CPython."""
+
+    def write(self, *args, **kwargs):
+        raise ValueError("I/O operation on closed file")
+
+    def flush(self):
+        pass
+
+
+def test_emit_swallows_broken_stderr_on_all_levels(hooks, monkeypatch):
+    """The real _Style emitter must swallow a failing stderr write at every
+    level: a closed stderr raises ValueError, and logging can never break a
+    hook (this is the branch monkeypatched sinks bypass)."""
+    monkeypatch.setattr(hooks.sys, "stderr", _BrokenStderr())
+    assert hooks._style.info("x") is None
+    assert hooks._style.warning("x") is None
+    assert hooks._style.error("x") is None
+
+
+class _EvilStr:
+    """Exception whose __str__ raises."""
+
+    def __str__(self):
+        raise ValueError("unprintable")
+
+
+class _EvilName(_EvilStr, metaclass=type):
+    pass
+
+
+class _EvilMeta(type):
+    @property
+    def __name__(cls):
+        raise RuntimeError("no name")
+
+
+class _EvilBoth(metaclass=_EvilMeta):
+    def __str__(self):
+        raise ValueError("unprintable")
+
+
+def test_desc_handles_unprintable_exception(hooks):
+    """_desc must render an exception whose __str__ raises without itself
+    raising: type-name fallback, then the final guard."""
+    assert hooks._desc(_EvilStr()) == "_EvilStr (unprintable)"
+    assert hooks._desc(_EvilBoth()) == "<unprintable exception>"
+
+
+def test_install_warns_on_setup_timeout(hooks, monkeypatch):
+    """TimeoutExpired has its own handler with the 120s message."""
+    rec = _install_style(hooks, monkeypatch)
+
+    def _raise_timeout(argv, **kwargs):
+        raise subprocess.TimeoutExpired("bash", 120)
+
+    monkeypatch.setattr(hooks.subprocess, "run", _raise_timeout)
+    assert hooks.install() is None
+    assert any("exceeded 120s" in t for t in rec.texts), rec.texts
+
+
+class _EvilEq(str):
+    """String whose equality comparison raises."""
+
+    def __eq__(self, other):
+        raise RuntimeError("boom")
+
+    def __ne__(self, other):
+        raise RuntimeError("boom")
+
+
+class _EvilPin(str):
+    """Pin token whose comparison against installed raises."""
+
+    def __eq__(self, other):
+        raise RuntimeError("boom")
+
+    def __ne__(self, other):
+        raise RuntimeError("boom")
+
+
+def test_pre_update_outer_guard_degrades_on_comparison_fault(hooks, monkeypatch):
+    """A fault outside both inner handlers (in the version comparison) must
+    reach the outer never-raise guard and degrade to a warning."""
+    rec = _install_style(hooks, monkeypatch)
+    monkeypatch.setattr(hooks, "_installed_version", lambda: _EvilEq("9.9.9"))
+    monkeypatch.setattr(hooks, "_pin_version", lambda: _EvilPin("1.0.1"))
+    assert hooks.pre_update() is None
+    assert any("pre_update degraded" in t for t in rec.texts), rec.texts
+
+
+def test_uninstall_outer_guard_degrades_when_message_construction_faults(hooks, monkeypatch):
+    """A fault while building the uninstall message (before _say) must reach
+    the outer guard: warn and return, never propagate."""
+    rec = _install_style(hooks, monkeypatch)
+
+    def _boom():
+        raise OSError("install dir unreadable")
+
+    monkeypatch.setattr(hooks, "_install_dir", _boom)
+    assert hooks.uninstall() is None
+    assert any("uninstall degraded" in t for t in rec.texts), rec.texts
+
+
+def test_emergency_swallows_when_stderr_itself_fails(hooks, monkeypatch):
+    """The last-resort _emergency write must stay silent when stderr is
+    already broken: the never-raise contract cannot depend on a working
+    stderr, so this path swallows instead of raising."""
+    monkeypatch.setattr(hooks.sys, "stderr", _BrokenStderr())
+    assert hooks._emergency("x") is None
 
 
 @pytest.fixture()
@@ -59,6 +198,16 @@ class _Result:
         self.stderr = err
 
 
+def _install_style(hooks, monkeypatch, rec=None):
+    """Single point of the test<->module coupling: install a recording sink on
+    hooks._style and return it. Tests must patch this module global to observe
+    operator messages; the loaded module is passed explicitly so the helper
+    never resolves the pytest fixture object at module scope."""
+    rec = rec if rec is not None else _Rec()
+    monkeypatch.setattr(hooks, "_style", rec)
+    return rec
+
+
 # ---------------------------------------------------------------------------
 # — real A0 lifecycle contract pins
 # ---------------------------------------------------------------------------
@@ -86,8 +235,7 @@ def test_hooks_never_raise_on_setup_exception(hooks, monkeypatch):
         raise FileNotFoundError("setup script missing")
 
     monkeypatch.setattr(hooks.subprocess, "run", _raise_missing)
-    rec = _Rec()
-    monkeypatch.setattr(hooks, "_style", rec)
+    rec = _install_style(hooks, monkeypatch)
     hooks.install()
     assert any("could not run" in t for t in rec.texts), rec.texts
 
@@ -131,8 +279,7 @@ def test_install_returns_without_raising_for_every_exit_class(hooks, monkeypatch
 
 def test_install_surfaces_setup_output_on_success(hooks, monkeypatch):
     """Setup output is surfaced to the operator."""
-    rec = _Rec()
-    monkeypatch.setattr(hooks, "_style", rec)
+    rec = _install_style(hooks, monkeypatch)
     _patch_run(hooks, monkeypatch, result=_Result(0, "rtk setup: installed rtk v1.0.1", ""))
     hooks.install()
     assert any("installed rtk" in t for t in rec.texts), rec.texts
@@ -140,8 +287,7 @@ def test_install_surfaces_setup_output_on_success(hooks, monkeypatch):
 
 def test_install_logs_warning_for_usage_exit(hooks, monkeypatch):
     """Exit 2 (usage error) is surfaced as a warning."""
-    rec = _Rec()
-    monkeypatch.setattr(hooks, "_style", rec)
+    rec = _install_style(hooks, monkeypatch)
     _patch_run(hooks, monkeypatch, result=_Result(2, "", "rtk setup: unknown argument"))
     hooks.install()
     assert any("unknown argument" in t for t in rec.texts)
@@ -149,8 +295,7 @@ def test_install_logs_warning_for_usage_exit(hooks, monkeypatch):
 
 def test_install_logs_warning_for_integrity_exit(hooks, monkeypatch):
     """non-zero non-2 exit (integrity/format corruption) warns and returns."""
-    rec = _Rec()
-    monkeypatch.setattr(hooks, "_style", rec)
+    rec = _install_style(hooks, monkeypatch)
     _patch_run(hooks, monkeypatch, result=_Result(1, "", "rtk setup: malformed pin"))
     hooks.install()
     assert any("malformed pin" in t for t in rec.texts)
@@ -158,8 +303,7 @@ def test_install_logs_warning_for_integrity_exit(hooks, monkeypatch):
 
 def test_install_surfaces_warning_output_on_exit_zero_warn_path(hooks, monkeypatch):
     """Warned-unavailable runs also exit 0 with stderr text; the skip and warn messages must surface."""
-    rec = _Rec()
-    monkeypatch.setattr(hooks, "_style", rec)
+    rec = _install_style(hooks, monkeypatch)
     _patch_run(
         hooks,
         monkeypatch,
@@ -172,8 +316,7 @@ def test_install_surfaces_warning_output_on_exit_zero_warn_path(hooks, monkeypat
 @pytest.mark.parametrize("exc", [FileNotFoundError("no bash"), OSError("boom"), subprocess.TimeoutExpired("bash", 120)])
 def test_install_swallows_exceptions_with_warning(hooks, monkeypatch, exc):
     """Any subprocess-layer exception warns and returns."""
-    rec = _Rec()
-    monkeypatch.setattr(hooks, "_style", rec)
+    rec = _install_style(hooks, monkeypatch)
     _patch_run(hooks, monkeypatch, exc=exc)
     assert hooks.install() is None
     assert rec.levels("warning") or rec.levels("error"), "expected a warning/error log"
@@ -181,8 +324,7 @@ def test_install_swallows_exceptions_with_warning(hooks, monkeypatch, exc):
 
 def test_install_exception_path_logs_reason(hooks, monkeypatch):
     """the warning must carry the failure reason for the operator."""
-    rec = _Rec()
-    monkeypatch.setattr(hooks, "_style", rec)
+    rec = _install_style(hooks, monkeypatch)
     _patch_run(hooks, monkeypatch, exc=OSError("disk-on-fire"))
     hooks.install()
     assert any("disk-on-fire" in t for t in rec.texts), rec.texts
@@ -304,8 +446,7 @@ def test_setup_script_referenced_exists(hooks):
 
 def test_install_survives_unicode_decode_error(hooks, monkeypatch):
     """Text-mode subprocess output decodes strictly in the interpreter locale; a non-ASCII byte from setup.sh raises UnicodeDecodeError (a ValueError, not an OSError), so it must not escape install and fail the plugin lifecycle."""
-    rec = _Rec()
-    monkeypatch.setattr(hooks, "_style", rec)
+    rec = _install_style(hooks, monkeypatch)
 
     def _raise_decode(argv, **kwargs):
         raise UnicodeDecodeError("ascii", b"\xe2", 0, 1, "invalid byte")
@@ -318,8 +459,7 @@ def test_install_survives_unicode_decode_error(hooks, monkeypatch):
 @pytest.mark.parametrize("rc", [126, 127, -9, -11])
 def test_install_classifies_bash_and_signal_rcs_as_runtime_failures(hooks, monkeypatch, rc):
     """Missing or non-executable script (126/127) and signal-killed children (negative rc) are availability-shaped, not integrity corruption — the operator must not be steered to checksum or pin inspection for them."""
-    rec = _Rec()
-    monkeypatch.setattr(hooks, "_style", rec)
+    rec = _install_style(hooks, monkeypatch)
     _patch_run(hooks, monkeypatch, result=_Result(rc, "", "bash: setup.sh: Permission denied"))
     hooks.install()
     texts = rec.texts
@@ -487,8 +627,7 @@ def test_pre_update_noop_when_version_matches_pin(hooks, monkeypatch):
     calls = _patch_version_then_setup(
         hooks, monkeypatch, probe=_probe_result(f"rtk {pin}"), setup=_Result(0, "", "")
     )
-    rec = _Rec()
-    monkeypatch.setattr(hooks, "_style", rec)
+    rec = _install_style(hooks, monkeypatch)
     assert hooks.pre_update() is None
     assert _hook_run_setup_count(calls) == 0, calls
     assert any("rtk" in t or pin in t for t in rec.texts), rec.texts
@@ -556,8 +695,7 @@ def test_install_swallows_closed_stdio_valueerror(hooks, monkeypatch):
 
 def test_install_swallows_unprintable_exception(hooks, monkeypatch):
     """An exception whose __str__ raises must not escape install through its own warning message construction."""
-    rec = _Rec()
-    monkeypatch.setattr(hooks, "_style", rec)
+    rec = _install_style(hooks, monkeypatch)
 
     def _raise_evil(argv, **kwargs):
         raise _EvilStr()
@@ -575,8 +713,7 @@ def test_pre_update_swallows_unprintable_pin_fault(hooks, monkeypatch):
     calls = _patch_version_then_setup(
         hooks, monkeypatch, probe=_probe_result("rtk 1.0.1"), setup=_Result(0, "", "")
     )
-    rec = _Rec()
-    monkeypatch.setattr(hooks, "_style", rec)
+    rec = _install_style(hooks, monkeypatch)
     assert hooks.pre_update() is None
     assert _hook_run_setup_count(calls) == 1, calls
     assert any("pin unreadable" in t for t in rec.texts), rec.texts
@@ -666,8 +803,7 @@ def test_pre_update_classifies_setup_exit_codes(hooks, monkeypatch, rc, needle):
     calls = _patch_version_then_setup(
         hooks, monkeypatch, probe=_probe_result("rtk 9.9.9"), setup=_Result(rc, "detail", "")
     )
-    rec = _Rec()
-    monkeypatch.setattr(hooks, "_style", rec)
+    rec = _install_style(hooks, monkeypatch)
     assert hooks.pre_update() is None
     assert _hook_run_setup_count(calls) == 1, calls
     assert any(needle in t for t in rec.texts), (needle, rec.texts)
