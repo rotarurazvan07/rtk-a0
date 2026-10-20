@@ -17,15 +17,6 @@ Search for **rtk** in Agent Zero's Plugin Hub and install.
 git clone https://github.com/rotarurazvan07/rtk-a0.git usr/plugins/rtk_a0
 ```
 
-Then **restart Agent Zero**. That's it. The plugin is on by default and has no settings.
-
-### Requirements
-
-- x86_64 Linux container (macOS and Windows are not supported)
-- Standard tools: `bash`, `curl`, `tar`, `sha256sum`, `awk`, `find`, `mktemp`
-
-If something is missing, you'll see a one-line warning and the agent keeps working uncompressed.
-
 ## How it works
 
 1. On install or update, `scripts/setup.sh` downloads the RTK release pinned in `rtk_pin.txt` (currently `v1.0.1`, static musl build), verifies its SHA-256 against the release `checksums.txt`, and installs it to `/usr/local/bin/rtk`.
@@ -46,12 +37,11 @@ This shows RTK's own savings ledger: total tokens saved and a per-command breakd
 
 Savings depend on the command. Output-heavy commands compress well; tiny outputs can even grow slightly.
 
+### Example
+
 | Command | Before | After | Reduction |
 | --- | --- | --- | --- |
 | `git status` | 476 B | 125 B | 73.7% |
-| `ls -la` | n/a | n/a | 70.6% |
-
-*Measured on one container. Not a guarantee.*
 
 ## Usage
 
@@ -91,9 +81,6 @@ Offline container, network block, or checksum mismatch. Setup logs one warning a
 
 **RTK exits with rc 3**
 This is RTK's allow-rules notice. The rewrite is still applied, and Agent Zero's permission layer handles approval as usual.
-
-**Compression never fires**
-You're probably not on x86_64 Linux. The pinned binary can't be provisioned elsewhere.
 
 ## Uninstall
 
