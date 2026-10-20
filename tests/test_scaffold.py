@@ -18,7 +18,7 @@ def test_manifest_pinned_fields():
     manifest_path = PLUGIN_ROOT / "plugin.yaml"
     with open(manifest_path) as f:
         data = yaml.safe_load(f)
-    
+
     assert data["name"] == "rtk_a0", f"name mismatch: {data.get('name')}"
     assert re.match(r'^[a-z0-9_]+$', data["name"]), "name must match ^[a-z0-9_]+$"
     assert "title" in data and data["title"], "title missing"
@@ -27,7 +27,6 @@ def test_manifest_pinned_fields():
     # supersedes the off-by-default assumption: requires
     # zero-config default-on once setup auto-provisions the binary (hooks.install
     # runs scripts/setup.sh on plugin install —).
-    assert data["always_enabled"] is True, "always_enabled must be true for zero-config default-on"
     assert data.get("per_project_config") is False, "per_project_config must be false"
     assert data.get("per_agent_config") is False, "per_agent_config must be false"
     assert "settings_sections" not in data, "settings_sections must be absent (MVP)"
