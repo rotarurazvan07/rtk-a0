@@ -19,7 +19,7 @@ def test_manifest_pinned_fields():
     with open(manifest_path) as f:
         data = yaml.safe_load(f)
 
-    assert data["name"] == "rtk_a0", f"name mismatch: {data.get('name')}"
+    assert data["name"] == "rtk_compression", f"name mismatch: {data.get('name')}"
     assert re.match(r'^[a-z0-9_]+$', data["name"]), "name must match ^[a-z0-9_]+$"
     assert "title" in data and data["title"], "title missing"
     assert "description" in data and data["description"], "description missing"

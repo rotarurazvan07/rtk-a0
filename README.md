@@ -1,5 +1,7 @@
 # RTK Compression for Agent Zero
 
+![](./docs/images/banner.png)
+
 Cut the token cost of terminal output in Agent Zero, without changing how you work.
 
 This plugin routes every terminal command through [RTK](https://github.com/rtk-ai/rtk), a CLI that rewrites commands so their output is compressed before it reaches the agent's context. Less noise, fewer tokens, same result.
@@ -91,6 +93,13 @@ Removing the plugin deletes the plugin files only. The RTK binary at `/usr/local
 This plugin is **Apache-2.0** (see `LICENSE`).
 
 RTK is a separate **BUSL-1.1** project. This plugin downloads the RTK binary at setup time and calls it as `rtk rewrite <command>`. It does not vendor, embed, or reimplement any RTK code.
+
+## Code health
+
+Scored with [desloppify](https://github.com/peteromallet/desloppify), an agent harness that reviews code for quality across 20 dimensions.
+
+![](./docs/images/scorecard.png)
+
 
 ## Links
 
