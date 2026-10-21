@@ -57,7 +57,7 @@ def test_name_matches_hub_pattern():
     manifest = _load_manifest()
     name = manifest.get("name", "")
     assert NAME_RE.match(name), f"name {name!r} must match ^[a-z0-9_]+$"
-    assert name == "rtk_a0", "name must be rtk_a0"
+    assert name == "rtk_compression", "name must be rtk_compression"
     # The checkout directory follows the repo slug, which is hyphenated
     # (CI: .../rtk-a0); the installer contract is name == directory modulo
     # that separator, so normalise before comparing.
@@ -114,6 +114,3 @@ def test_git_clone_layout_is_install_ready(tmp_path):
     ]
     missing = [rel for rel in required if not (layout / rel).is_file()]
     assert not missing, f"install layout missing required paths: {missing}"
-    # name == directory (installer dir-match pin)
-    manifest = yaml.safe_load((layout / "plugin.yaml").read_text(encoding="utf-8"))
-    assert manifest["name"] == layout.name == "rtk_a0"
