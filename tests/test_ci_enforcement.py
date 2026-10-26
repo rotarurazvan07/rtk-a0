@@ -90,6 +90,48 @@ def _ast_grep_binary() -> str | None:
     return None
 
 
+CI_PATH = ROOT / ".github" / "workflows" / "ci.yaml"
+# Production Python surface the 95% gate must cover: root hooks + every
+# extension module. Globbed in CI so a new extension module cannot land
+# outside the gate silently.
+PROD_PY = ["hooks.py"] + sorted(
+    p.relative_to(ROOT).as_posix()
+    for p in (ROOT / "extensions" / "python").rglob("*.py")
+)
+
+
+def test_coverage_include_covers_every_production_module():
+    """The CI coverage gate globs the whole production surface: hooks.py
+    plus extensions/python/**, so adding a new extension module keeps it
+    inside the 95% gate instead of silently dropping it."""
+    ci = CI_PATH.read_text(encoding="utf-8")
+    assert 'include="hooks.py,extensions/python/**"' in ci, (
+        "coverage gate must include hooks.py and extensions/python/**"
+    )
+    for rel in PROD_PY:
+        assert (ROOT / rel).exists(), f"production module {rel} missing"
+    # every extension module matches the glob (no stray non-py extensions)
+    for rel in PROD_PY[1:]:
+        assert rel.startswith("extensions/python/"), f"{rel} outside glob scope"
+
+
+def test_ci_framework_shim_pins_extension_contract():
+    """CI runs framework-venv suites against a minimal Extension shim; the
+    shim must preserve the contract the extension actually relies on:
+    Extension stems with an .agent attribute, and load_classes_from_folder
+    returning Extension subclasses only (the loader filter)."""
+    ci = CI_PATH.read_text(encoding="utf-8")
+    assert "class Extension" in ci and "self.agent = agent" in ci, (
+        "CI shim must define Extension with per-instance agent"
+    )
+    assert "def load_classes_from_folder" in ci, (
+        "CI shim must define the loader entry point the suites import"
+    )
+    assert "issubclass" in ci and "base_class" in ci, (
+        "shim loader must filter subclasses of the base class, as A0 does"
+    )
+
+
 def test_ast_grep_live_scan_when_binary_present():
     """gated live proof: ast-grep on PATH scans production source clean."""
     sg = _ast_grep_binary()

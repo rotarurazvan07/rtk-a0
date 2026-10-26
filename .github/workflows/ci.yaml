@@ -73,6 +73,6 @@ jobs:
       - name: Enforce 95% coverage gate
         run: >-
           python -m coverage report
-          --include="hooks.py,extensions/python/tool_execute_before/_10_rtk_intercept.py"
+          --include="hooks.py,extensions/python/**"
           --show-missing
           --fail-under=95

@@ -442,9 +442,30 @@ def _git(args: list[str]) -> str | None:
     return proc.stdout if proc.returncode == 0 else None
 
 
+def _background_baseline() -> str:
+    """Diff base that isolates THIS feature from upstream history.
+
+    Pre-merge this was the epic branch point (HEAD at 5a04c91). After main
+    advanced upstream (legitimate Hub/desloppify PRs touched hooks/setup.sh/
+    plugin.yaml/extension), diffing against HEAD would misattribute those
+    upstream changes to this feature. The merge baseline (origin/main at merge
+    time) isolates the feature's own footprint; fall back to HEAD only when
+    origin/main is unavailable (air-gapped clone).
+    """
+    base = _git(["rev-parse", "origin/main"])
+    return base.strip() if base else "HEAD"
+
+
 def test_no_agent_loop_or_lifecycle_changes_vs_baseline():
-    """AC-05: zero extensions/ and hooks changes; zero new background surfaces."""
-    diff = _git(["diff", "--stat", "HEAD", "--", "extensions", "hooks.py", "scripts", "plugin.yaml", "rtk_pin.txt"])
+    """AC-05: zero agent-loop/extension and hooks changes; zero new background surfaces.
+
+    Scoped to extensions/python (the agent-loop surface): Epic 4's second
+    surface (Story 4-4 chat-header badge) ships a sanctioned plugin-owned
+    frontend asset under extensions/webui/chat-top-start/ per the 2026-10-25
+    ADR-007 addendum — the badge-story pin below carries that half; this pin
+    guards the agent loop itself.
+    """
+    diff = _git(["diff", "--stat", _background_baseline(), "--", "extensions/python", "hooks.py", "scripts", "plugin.yaml", "rtk_pin.txt"])
     if diff is None:
         pytest.skip("git unavailable: absence audit via diff not possible")
     assert diff.strip() == "", f"story 4.1 must not touch background surfaces; diff:\n{diff}"
@@ -1734,7 +1755,7 @@ def test_badge_root_stylesheet_cannot_defeat_x_show():
 
 def test_badge_adds_no_agent_loop_or_lifecycle_changes():
     """AC-06: zero extensions/python, hooks, scheduled-task, MCP additions."""
-    diff = _git(["diff", "--stat", "HEAD", "--", "extensions/python", "hooks.py", "scripts", "plugin.yaml", "rtk_pin.txt"])
+    diff = _git(["diff", "--stat", _background_baseline(), "--", "extensions/python", "hooks.py", "scripts", "plugin.yaml", "rtk_pin.txt"])
     if diff is None:
         pytest.skip("git unavailable: absence audit via diff not possible")
     assert diff.strip() == "", f"badge story must not touch background surfaces; diff:\n{diff}"

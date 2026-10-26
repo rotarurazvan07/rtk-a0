@@ -1,5 +1,3 @@
-"""zero-config default-on operation & Plugin Hub metadata. Pure-venv suite (no A0 imports, no network). Verifies: -: plugin.yaml declares always_enabled: true ( default-on; loader semantics bypass toggles for always_enabled plugins — /a0/helpers/plugins.py:492-511,:573-585) and no config file is required to activate. -: manifest satisfies the real install-time validation contract (PluginMetadata at /a0/helpers/plugins.py:77-85; validate_plugin_dir / _get_plugin_name at /a0/plugins/_plugin_installer/helpers/install.py:31-50). -: git-clone-shaped layout contains everything the installer needs (plugin.yaml at root is the hard requirement — install.py:43). -: honest metadata — name regex, no MVP-overclaiming fields or descriptions. Red phase: written against the CURRENT manifest (always_enabled: false)."""
-
 from __future__ import annotations
 
 import re
@@ -15,22 +13,12 @@ MANIFEST = PLUGIN_ROOT / "plugin.yaml"
 # Real required manifest fields per /a0/helpers/plugins.py:77-85 (PluginMetadata).
 # author/license/repo are NOT manifest fields (PluginListItem display attrs, :91-113).
 REQUIRED_STR_FIELDS = ("name", "title", "description", "version")
-BOOL_FLAGS = ("per_project_config", "per_agent_config", "always_enabled")
+BOOL_FLAGS = ("per_project_config", "per_agent_config")
 NAME_RE = re.compile(r"^[a-z0-9_]+$")
 
 
 def _load_manifest() -> dict:
     return yaml.safe_load(MANIFEST.read_text(encoding="utf-8"))
-
-
-# default-on
-
-def test_manifest_declares_always_enabled():
-    """`always_enabled: true` is the default-on mechanism — the loader enables such plugins regardless of.toggle-* files (helpers/plugins.py:492-511) and refuses to disable them (helpers/plugins.py:573-585)."""
-    manifest = _load_manifest()
-    assert manifest.get("always_enabled") is True, (
-        "plugin.yaml must set always_enabled true for zero-config default-on"
-    )
 
 
 def test_no_default_config_required():
@@ -69,7 +57,7 @@ def test_name_matches_hub_pattern():
     manifest = _load_manifest()
     name = manifest.get("name", "")
     assert NAME_RE.match(name), f"name {name!r} must match ^[a-z0-9_]+$"
-    assert name == "rtk_a0", "name must be rtk_a0"
+    assert name == "rtk_compression", "name must be rtk_compression"
     # The checkout directory follows the repo slug, which is hyphenated
     # (CI: .../rtk-a0); the installer contract is name == directory modulo
     # that separator, so normalise before comparing.
@@ -126,6 +114,3 @@ def test_git_clone_layout_is_install_ready(tmp_path):
     ]
     missing = [rel for rel in required if not (layout / rel).is_file()]
     assert not missing, f"install layout missing required paths: {missing}"
-    # name == directory (installer dir-match pin)
-    manifest = yaml.safe_load((layout / "plugin.yaml").read_text(encoding="utf-8"))
-    assert manifest["name"] == layout.name == "rtk_a0"

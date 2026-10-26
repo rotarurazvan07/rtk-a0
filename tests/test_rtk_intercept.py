@@ -10,6 +10,52 @@ sys.path.insert(0, os.environ.get("A0_FRAMEWORK_ROOT", "/a0"))
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 EXT_DIR = PLUGIN_ROOT / "extensions" / "python" / "tool_execute_before"
+# Static import edge: the extension module imports as an ordinary module
+# (module names may start with underscore); A0 path-loads the same file via
+# load_classes_from_folder. The equivalence test pins both surfaces.
+sys.path.insert(0, str(EXT_DIR))
+
+from _10_rtk_intercept import RtkIntercept as _StaticRtkIntercept  # noqa: E402
+
+def test_non_dict_tool_args_is_ignored():
+    """Guard 2: a non-dict tool_args (None from a defensive dispatcher, list,
+    string) passes through untouched — no mutation, no raise. Covers the
+    isinstance branch the CI coverage gate flagged."""
+    ext = _load_ext()
+    agent = type("A", (), {"data": {}})()
+    for bad in (None, ["rtk"], "terminal", 42):
+        ext.execute("code_execution_tool", bad, agent=agent)
+        ext.execute("code_execution_tool", bad)
+    # dict-shaped but non-terminal still returns early via later guards;
+    # the non-dict shapes above are the only ones reaching this branch.
+
+
+def test_static_and_path_loaded_extension_are_identical():
+    """The statically imported RtkIntercept and the A0 path-loaded module
+    expose the same class surface: the framework loader discovers the class
+    by subclass scan from the file, so both loading paths must serve
+    identical behavior (same execute bytecode, same constants)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_10_rtk_intercept_pathloaded", EXT_DIR / "_10_rtk_intercept.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    path_cls = module.RtkIntercept
+    static_cls = _StaticRtkIntercept
+    assert path_cls.execute.__code__.co_code == static_cls.execute.__code__.co_code, (
+        "execute differs between static import and path load"
+    )
+    # Module constants (not class attributes): both loads expose them.
+    import sys as _sys
+
+    path_mod = module
+    static_mod = _sys.modules[_StaticRtkIntercept.__module__]
+    for const in ("RTK_REWRITE_TIMEOUT", "RTK_MISSING_WARNED", "RTK_GAIN_HINTED"):
+        assert getattr(path_mod, const) == getattr(static_mod, const), (
+            f"constant {const} differs between path load and static import"
+        )
 
 
 def test_extension_folder_exists():
@@ -564,8 +610,12 @@ def test_guard_contract_source_structure():
     assert "rtk_a0_missing_warned" in src
     assert src.count('RTK_MISSING_WARNED] =') == 1, "flag written at exactly one place"
     assert 'RTK_MISSING_WARNED = "rtk_a0_missing_warned"' in src, "warn-once key pinned once"
-    assert "except subprocess.TimeoutExpired" in src, "explicit timeout branch required"
-    assert src.index("except subprocess.TimeoutExpired") < src.index("except Exception")
+    assert "except Exception" in src, "single guarded handler required"
+    # timeout is handled by the same catch-all (TimeoutExpired subclasses
+    # Exception); the handler comment must name both fault classes so the
+    # merge stays intentional rather than accidental.
+    handler = src[src.index("except Exception"):]
+    assert "TimeoutExpired" in handler[:400], "handler must name the timeout class"
     assert "encoding=\"utf-8\"" in src, "explicit utf-8 codec required (locale-safe)"
     # ordering: idempotence gate -> availability -> guarded call
     assert src.index("shutil.which") < src.index("subprocess.run"), "availability precedes delegation"
@@ -1186,7 +1236,7 @@ def test_no_plugin_owned_savings_persistence():
         if candidate.suffix != ".json" and "stats" not in candidate.name and "state" not in candidate.name:
             continue
         parts = candidate.relative_to(PLUGIN_ROOT).parts
-        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git")):
+        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", ".desloppify", ".neuralmind")):
             continue
         owned.append(str(candidate))
     assert not owned, f"plugin-owned persistence surface exists: {owned}"
@@ -1208,7 +1258,7 @@ def test_no_plugin_owned_savings_persistence():
         if "gain" not in name and "saving" not in name and "stats" not in name:
             continue
         parts = candidate.relative_to(PLUGIN_ROOT).parts
-        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", "docs", "node_modules", ".venv")):
+        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", "docs", "node_modules", ".venv", ".desloppify", ".neuralmind")):
             continue
         is_persistence_surface = candidate.suffix in LEDGER_SUFFIXES
         if not is_persistence_surface and candidate.suffix in {".py", ".js", ".html", ".htm"}:

@@ -1,73 +1,55 @@
-# RTK Compression — Agent Zero Plugin
+# RTK Compression for Agent Zero
 
-Thin fail-open adapter that routes Agent Zero terminal commands through the
-[RTK](https://github.com/rtk-ai/rtk) CLI for output compression. Every terminal
-command is delegated to `rtk rewrite` before execution; if RTK is unavailable or
-fails, your command runs unchanged. The plugin downloads and invokes the RTK
-binary — it never vendors or reimplements it.
+![](./docs/images/banner.png)
+
+Cut the token cost of terminal output in Agent Zero, without changing how you work.
+
+This plugin routes every terminal command through [RTK](https://github.com/rtk-ai/rtk), a CLI that rewrites commands so their output is compressed before it reaches the agent's context. Less noise, fewer tokens, same result.
+
+**Fail-open by design:** if RTK is missing, slow, or errors out, your original command runs unchanged. Worst case, you get uncompressed output.
 
 ## Install
 
-**Plugin Hub** — search for **rtk** in Agent Zero's Plugin Hub and install.
-The plugin is default-on (no settings to toggle).
+**Option 1: Plugin Hub**
+Search for **rtk** in Agent Zero's Plugin Hub and install.
 
-**Git clone** — clone the plugin into Agent Zero's custom-plugin directory:
+**Option 2: Git clone**
 
 ```bash
 git clone https://github.com/rotarurazvan07/rtk-a0.git usr/plugins/rtk_a0
 ```
 
-**Restart Agent Zero** after either path so the extension loads.
+## How it works
 
-### What setup does automatically
+1. On install or update, `scripts/setup.sh` downloads the RTK release pinned in `rtk_pin.txt` (currently `v1.0.1`, static musl build), verifies its SHA-256 against the release `checksums.txt`, and installs it to `/usr/local/bin/rtk`.
+2. Before each terminal command runs, the plugin calls `rtk rewrite <command>`.
+3. If RTK returns a rewrite, that runs instead. Otherwise the original command runs.
 
-On install (and on plugin update), `scripts/setup.sh` provisions the RTK binary:
+Rewritten commands still pass through Agent Zero's normal permission layer. The plugin never bypasses approvals.
 
-- Downloads the release pinned in `rtk_pin.txt` (currently `v1.0.1`, the x86_64
-  Linux musl static build) from the RTK project's GitHub releases.
-- Verifies the download's SHA-256 against the release `checksums.txt`, then
-  installs it to `/usr/local/bin/rtk`. Skips automatically when the pinned
-  version is already installed.
-- **Warn-not-fail:** if the download or verification fails (offline container,
-  network block, checksum mismatch), setup logs one warning and exits cleanly.
-  The plugin keeps working — commands simply run uncompressed until the binary
-  is available.
+## Check that it's working
 
-## Verify compression is active
-
-Run this through the agent in any session:
+Ask the agent to run:
 
 ```
 rtk gain
 ```
 
-RTK maintains its own savings ledger; the plugin surfaces its output unchanged.
-Read **Tokens saved** and the per-command table to see cumulative and
-per-command reductions.
+This shows RTK's own savings ledger: total tokens saved and a per-command breakdown.
 
-Measured examples on this container (not guarantees):
+Savings depend on the command. Output-heavy commands compress well; tiny outputs can even grow slightly.
+
+### Example
 
 | Command | Before | After | Reduction |
 | --- | --- | --- | --- |
 | `git status` | 476 B | 125 B | 73.7% |
-| `ls -la` | — | — | 70.6% |
-
-Savings are command-dependent: output-heavy commands compress well, while tiny
-outputs can come back **larger** (a plain `ls` in a small directory measured
-78 B → 146 B in testing). There is no guaranteed flat percentage.
 
 ## Usage
 
-The plugin is **default-on** (manifest `always_enabled: true`) and needs no
-configuration. In any session:
+No configuration needed. A few useful things to know:
 
-- Terminal commands are rewritten by RTK before execution — compressed output
-  reaches the agent context when RTK has a rewrite, and the original command
-  runs when RTK returns no change.
-- Commands you prefix with `rtk` yourself are passed through untouched
-  (`rtk gain`, `rtk --version`, ...), so you can always talk to RTK directly.
-- Rewritten commands still go through Agent Zero's normal permission layer —
-  the plugin never bypasses approvals.
+- Commands you prefix with `rtk` yourself (`rtk gain`, `rtk --version`) pass through untouched.
 
 ### Savings page — RTK's totals on demand
 
@@ -75,85 +57,69 @@ Run **`rtk-gain`** from the command palette to open a read-only savings
 page. It fetches RTK's own accounting **once, when the page opens**, and
 shows the totals **as RTK formats them** — tokens saved and the savings
 percentage come from RTK's ledger; this plugin never recomputes or re-rounds
-them. While the page is closed there is **no background polling and no
-network traffic**, and the plugin persists nothing.
+them. A matching badge in the chat header shows the savings percentage at a
+glance, also fetched once when the chat page opens. While either surface is
+closed there is **no background polling and no network traffic**, and the
+plugin persists nothing.
 
 When RTK's ledger is empty (fresh install, no tracked commands yet) the page
 says so instead of showing zeros. When the RTK binary is unavailable, the
 page shows a notice pointing at the Troubleshooting section below — never an
 error page, and the agent keeps working either way.
 
-### Escape hatch — raw output on demand
-
-**`rtk bypass <command>`** returns the command's raw, unrewritten output. Use it
-whenever you want exactly what the command prints, with no compression in the
-way:
+- **Want raw output?** Use `rtk bypass <command>`:
 
 ```
-rtk bypass ls -la
+  rtk bypass ls -la
 ```
 
-### Fail-open guarantee
+## Fail-open guarantee
 
-The plugin is designed to trust by default: no failure mode can strand your
-command. RTK missing from `PATH` (one warning per session), rewrite timeout
-(2 s), non-zero rewrite exit — except RTK's rc 3 allow-rules notice, which
-counts as a rewrite and is applied — empty or identical rewrite output, and
-any internal error all result in the **original command running
-unchanged**. The command always executes — worst case, uncompressed.
+Your command always runs. Each of these cases falls back to the original command:
+
+- RTK not found on `PATH` (one warning per session)
+- Rewrite takes longer than 2 seconds
+- RTK exits with an error (except rc 3, see below)
+- Empty or identical rewrite output
+- Any internal plugin error
 
 ## Troubleshooting
 
-**"rtk unavailable — running uncompressed" warning appears once per
-session.** The RTK binary is not on `PATH`. The agent still works — commands
-run raw and uncompressed.
+**"rtk unavailable — running uncompressed" warning**
+The RTK binary isn't on `PATH`. Re-run setup from the plugin directory (safe to repeat):
 
-Remedy:
+```bash
+RTK_INSTALL_DIR=/usr/local/bin bash scripts/setup.sh
+rtk --version
+```
 
-1. Re-run setup from the plugin directory (it is idempotent and skips work that
-   is already done):
+Then restart the session and run `rtk gain`.
 
-   ```bash
-   RTK_INSTALL_DIR=/usr/local/bin bash scripts/setup.sh
-   ```
+**Setup couldn't download RTK**
+Offline container, network block, or checksum mismatch. Setup logs one warning and exits cleanly; the plugin works uncompressed until the binary is available.
 
-2. Verify the binary is present:
-
-   ```bash
-   rtk --version
-   ```
-
-3. Restart the agent session and run `rtk gain` again.
-
-**RTK rewrites carry an allow-rules notice on some hosts.** On default
-containers RTK exits with rc 3 and defers command approval to the host —
-Agent Zero's permission layer applies to the rewritten command exactly as it
-does to the original, and the compressed output is valid either way.
-
-**Compression seems not to fire.** The pinned binary is Linux-only. On macOS or
-Windows the binary cannot be provisioned — the plugin warns and the agent keeps
-working uncompressed.
+**RTK exits with rc 3**
+This is RTK's allow-rules notice. The rewrite is still applied, and Agent Zero's permission layer handles approval as usual.
 
 ## Uninstall
 
-Uninstalling the plugin removes the plugin files only. The RTK binary at
-`/usr/local/bin/rtk` is treated as user-owned and left in place — remove it
-yourself if you want it gone. On plugin update, setup re-provisions the binary
-if the installed version has drifted from the pin in `rtk_pin.txt`.
+Removing the plugin deletes the plugin files only. The RTK binary at `/usr/local/bin/rtk` is left in place; delete it yourself if you want it gone.
 
 ## License
 
-This plugin is licensed **Apache-2.0** (see `LICENSE`). RTK itself is an
-**external BUSL-1.1 dependency**, used **orchestration-only**: the plugin
-downloads the RTK binary at setup time and invokes it as
-`rtk rewrite <command>` — it never vendors, embeds, or reimplements RTK code. Support scope: **Linux containers only** - the
-pinned release is the x86_64 musl static Linux build. Compliance boundary: the
-RTK engine is downloaded as a pinned, single-source binary (recorded in
-`rtk_pin.txt`) and used for orchestration only; no RTK code or RTK-owned
-savings accounting is embedded in this repository.
+This plugin is **Apache-2.0** (see `LICENSE`).
+
+RTK is a separate **BUSL-1.1** project. This plugin downloads the RTK binary at setup time and calls it as `rtk rewrite <command>`. It does not vendor, embed, or reimplement any RTK code.
+
+## Code health
+
+Scored with [desloppify](https://github.com/peteromallet/desloppify), an agent harness that reviews code for quality across 20 dimensions.
+
+![](./docs/images/scorecard.png)
+
 
 ## Links
 
-- RTK project: https://github.com/rtk-ai/rtk
-- RTK documentation: https://www.rtk-ai.app/docs/
-- This plugin: https://github.com/rotarurazvan07/rtk-a0
+- [RTK project](https://github.com/rtk-ai/rtk)
+- [RTK documentation](https://www.rtk-ai.app/docs/)
+- [This plugin](https://github.com/rotarurazvan07/rtk-a0)
