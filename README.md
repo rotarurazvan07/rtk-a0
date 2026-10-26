@@ -69,6 +69,20 @@ configuration. In any session:
 - Rewritten commands still go through Agent Zero's normal permission layer —
   the plugin never bypasses approvals.
 
+### Savings page — RTK's totals on demand
+
+Run **`rtk-gain`** from the command palette to open a read-only savings
+page. It fetches RTK's own accounting **once, when the page opens**, and
+shows the totals **as RTK formats them** — tokens saved and the savings
+percentage come from RTK's ledger; this plugin never recomputes or re-rounds
+them. While the page is closed there is **no background polling and no
+network traffic**, and the plugin persists nothing.
+
+When RTK's ledger is empty (fresh install, no tracked commands yet) the page
+says so instead of showing zeros. When the RTK binary is unavailable, the
+page shows a notice pointing at the Troubleshooting section below — never an
+error page, and the agent keeps working either way.
+
 ### Escape hatch — raw output on demand
 
 **`rtk bypass <command>`** returns the command's raw, unrewritten output. Use it

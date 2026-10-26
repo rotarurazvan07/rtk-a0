@@ -1,0 +1,53 @@
+<html>
+<head>
+  <title>RTK Savings</title>
+  <script src="/plugins/rtk_a0/webui/rtk-gain-store.js"></script>
+</head>
+<body>
+  <div x-data
+       x-init="$store.rtkGain.onOpen()"
+       x-destroy="$store.rtkGain.cleanup()">
+
+    <div x-show="$store.rtkGain.status === 'loading'">
+      <p>Opening savings page&#8230;</p>
+    </div>
+
+    <div x-show="$store.rtkGain.status === 'error'">
+      <p x-text="$store.rtkGain.error"></p>
+    </div>
+
+    <!-- ready state: either the headline view or a notice view -->
+    <div x-show="$store.rtkGain.status === 'ready'">
+
+      <template x-if="$store.rtkGain.renderView().view === 'headline'">
+        <div class="rtk-gain-headline">
+          <h1>RTK savings</h1>
+          <p class="rtk-gain-headline-figure" x-text="$store.rtkGain.renderView().headline"></p>
+          <dl class="rtk-gain-fields">
+            <template x-for="field in $store.rtkGain.renderView().fields" :key="field.label">
+              <div>
+                <dt x-text="field.label"></dt>
+                <dd x-text="field.value"></dd>
+              </div>
+            </template>
+          </dl>
+          <p class="rtk-gain-source-note">
+            These are RTK's own accounting numbers, shown as RTK formats them.
+          </p>
+        </div>
+      </template>
+
+      <template x-if="$store.rtkGain.renderView().view === 'notice'">
+        <div class="rtk-gain-notice">
+          <h1>RTK savings</h1>
+          <!-- static default copy is the empty-ledger state; x-text overrides
+               it with the specific notice (missing rtk / endpoint fail) -->
+          <p x-text="$store.rtkGain.renderView().notice">RTK has no tracked commands yet. Savings appear here once commands run through the plugin.</p>
+        </div>
+      </template>
+
+    </div>
+
+  </div>
+</body>
+</html>

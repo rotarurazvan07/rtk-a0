@@ -1191,7 +1191,15 @@ def test_no_plugin_owned_savings_persistence():
         owned.append(str(candidate))
     assert not owned, f"plugin-owned persistence surface exists: {owned}"
     # extension: gain-visibility must add nothing either —
-    # no plugin-owned gain/savings ledger anywhere in the plugin tree.
+    # no plugin-owned gain/savings LEDGER anywhere in the plugin tree. A ledger
+    # is a persistence SURFACE (data-file suffix or a persistence primitive in
+    # the body); the sanctioned ADR-007 command surface (.command.yaml / handler
+    # .py / page .js) is a UI surface that persists nothing and is not a ledger.
+    LEDGER_SUFFIXES = {".json", ".db", ".sqlite", ".sqlite3", ".csv",
+                       ".tsv", ".ndjson", ".parquet"}
+    LEDGER_BODY_MARKERS = ("json.dump", "json.dumps", "write_text", "write_bytes",
+                           "sqlite3.connect", "Path(\"", "os.replace", "os.rename",
+                           "open(", "shutil.copy")
     ledger = []
     for candidate in PLUGIN_ROOT.rglob("*"):
         if not candidate.is_file():
@@ -1200,9 +1208,14 @@ def test_no_plugin_owned_savings_persistence():
         if "gain" not in name and "saving" not in name and "stats" not in name:
             continue
         parts = candidate.relative_to(PLUGIN_ROOT).parts
-        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", "docs", "node_modules")):
+        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", "docs", "node_modules", ".venv")):
             continue
-        ledger.append(str(candidate))
+        is_persistence_surface = candidate.suffix in LEDGER_SUFFIXES
+        if not is_persistence_surface and candidate.suffix in {".py", ".js", ".html", ".htm"}:
+            body = candidate.read_text(encoding="utf-8", errors="replace")
+            is_persistence_surface = any(m in body for m in LEDGER_BODY_MARKERS)
+        if is_persistence_surface:
+            ledger.append(str(candidate))
     assert not ledger, f"no plugin-owned gain/savings ledger: {ledger}"
     # hooks.py and scripts/setup.sh must not write any stats-like surface.
     for text_path in (PLUGIN_ROOT / "hooks.py", PLUGIN_ROOT / "scripts" / "setup.sh"):

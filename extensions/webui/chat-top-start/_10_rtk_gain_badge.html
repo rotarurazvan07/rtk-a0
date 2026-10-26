@@ -1,0 +1,68 @@
+<!--
+  RTK chat-header savings badge (second savings surface, zero-load contract).
+  Mounted by the framework chat-top-start extension slot via directory-scan
+  discovery (helpers/extension.py webui manifest) - no registration step and
+  no framework file changes. The badge exists ONLY while a renderable payload
+  exists: it starts hidden, fires exactly one endpoint fetch when the chat
+  page opens (x-init -> store onOpen), and disappears completely on degrade,
+  busy, or fail states (no error chrome, no blank box, no retry loop).
+  Precedent: bundled plugins mount slot assets the same way (plugins/
+  _code_execution/extensions/webui/chat-top-start/_10_styles.html).
+-->
+<script type="module" src="/plugins/rtk_a0/webui/rtk-gain-badge-store.js"></script>
+
+<div class="rtk-gain-badge"
+     x-data
+     x-show="$store.rtkGainBadge?.visible()"
+     x-init="$store.rtkGainBadge?.onOpen()"
+     x-destroy="$store.rtkGainBadge?.cleanup()"
+     role="status"
+     aria-live="polite"
+     style="display:none"
+     title="RTK savings, from RTK's own accounting">
+  <span class="rtk-gain-badge-dot" aria-hidden="true"></span>
+  <span class="rtk-gain-badge-label">RTK</span>
+  <span class="rtk-gain-badge-figure" x-text="$store.rtkGainBadge?.badgePct() || ''"></span>
+  <span class="rtk-gain-badge-suffix">saved</span>
+</div>
+
+<style>
+  /* Compact header badge - sits inside #time-date-container (display:contents
+     slot children inherit the header row layout). Prefix-isolated classes.
+     NOTE: no display:none in this class rule - the root's inline
+     style="display:none" is the pre-Alpine guard, and Alpine's x-show removes
+     that inline property on show; a class-level display:none would defeat
+     x-show and the badge could never render in the ready state. */
+  .rtk-gain-badge {
+    align-items: center;
+    gap: .35rem;
+    padding: .18rem .55rem;
+    border: 1px solid color-mix(in srgb, var(--color-accent, #4a9) 45%, var(--color-border, #333));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-accent, #4a9) 10%, var(--color-panel, #1a1a1a));
+    color: var(--color-text, #e5e5e5);
+    font-size: .76rem;
+    line-height: 1;
+    white-space: nowrap;
+    user-select: none;
+  }
+  .rtk-gain-badge-dot {
+    width: .42rem;
+    height: .42rem;
+    border-radius: 50%;
+    background: var(--color-accent, #4a9);
+    flex: 0 0 auto;
+  }
+  .rtk-gain-badge-label {
+    font-weight: 600;
+    letter-spacing: .04em;
+    opacity: .85;
+  }
+  .rtk-gain-badge-figure {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .rtk-gain-badge-suffix {
+    opacity: .7;
+  }
+</style>

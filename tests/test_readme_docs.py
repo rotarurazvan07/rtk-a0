@@ -71,6 +71,29 @@ def test_documents_rtk_bypass_escape_hatch():
     assert "rtk bypass" in _readme_text()
 
 
+def test_documents_rtk_gain_slash_command():
+    """AC-06: the slash command that opens the savings page is documented."""
+    text = README.read_text(encoding="utf-8").lower()
+    assert "rtk-gain" in text, "README must name the rtk-gain command"
+    assert "palette" in text or "command" in text, "README must say how it is opened"
+
+
+def test_documents_savings_page_zero_load():
+    """AC-06: the page is documented as open-only, zero background load."""
+    text = README.read_text(encoding="utf-8").lower()
+    assert "no background polling" in text, "zero-load framing must be documented"
+    assert "once, when the page opens" in text, "fetch-on-open must be documented"
+
+
+def test_documents_savings_page_read_only_rtk_accounting():
+    """AC-06: the page is framed as a read-only view of RTK's own numbers."""
+    text = README.read_text(encoding="utf-8").lower()
+    assert "rtk formats" in text or "as rtk formats them" in text, (
+        "README must state the numbers are RTK's own formatting"
+    )
+    assert "recompute" in text, "README must state the plugin never recomputes"
+
+
 def test_documents_fail_open_guarantee():
     low = _readme_text().lower()
     assert "fail-open" in low or "fail open" in low

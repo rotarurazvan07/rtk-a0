@@ -16,9 +16,18 @@ RULE_IDS = {
     "no-hardcoded-pin-in-shell",
 }
 # Production source only: fixtures/docs legitimately quote the version shape.
+# Epic 4 (2026-10-26, CR-4-2-D8 fold-in): the user-triggered rtk gain surface
+# family ships new production paths — command handler, api endpoint, page and
+# badge webui assets — so the live ast-grep gate covers them too. rc=0 verified
+# scoped over this full set at PR prep time.
 PROD_TARGETS = [
     "scripts/setup.sh", "hooks.py", "plugin.yaml",
     "extensions/python/tool_execute_before/_10_rtk_intercept.py",
+    "commands/rtk-gain.command.yaml", "commands/rtk_gain_command.py",
+    "api/rtk_gain.py", "api/__init__.py",
+    "webui/main.html", "webui/rtk-gain-store.js",
+    "webui/rtk-gain-badge-store.js",
+    "extensions/webui/chat-top-start/_10_rtk_gain_badge.html",
 ]
 
 

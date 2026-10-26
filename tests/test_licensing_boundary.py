@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Licensing-boundary and official-extension compliance checks. Pure-runtime structural scans: network-free, host-state independent, scanning only the plugin's own tree. Lessons honored: vendoring needles match code with comments stripped, never documentation prose."""
 import ast
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -27,7 +28,56 @@ FRAMEWORK_FILE_NAMES = {"agent.py", "initialize.py", "run_ui.py", "models.py",
 # A0 core dirs: forbidden at the tree ROOT only (extensions/python/ and
 # extensions/python/tool_execute_before/ are the OFFICIAL layout and must
 # not false-positive - self-caught defect #3, ).
+# helpers/ stays unconditionally banned at the root (framework internals,
+# no plugin-owned layout uses it). api/, webui/, plugins/ are ALSO the
+# A0-sanctioned plugin-owned surface dirs (ADR-007: plugin api/ handler +
+# webui/main.html page; helpers/plugins.py:292-293) - a root dir under
+# one of those names is a vendoring signal ONLY when it actually carries
+# framework source (core file name or core-module content marker).
 FRAMEWORK_ROOT_DIRS = {"helpers", "api", "webui", "plugins"}
+PLUGIN_OWNED_ROOT_DIRS = {"api", "webui", "plugins"}
+# Content markers copied from A0 core modules: a plugin-owned dir holding
+# these is smuggling framework source under a harmless file name. Token-line
+# matching (no regex): bare 'class Agent:' AND 'class Agent(BaseAgent):'
+# shapes both count (a paren-needle like 'class Agent(' misses the bare
+# Python class form; a substring needle would false-positive 'class MyAgent').
+FRAMEWORK_CONTENT_SYMBOLS = {
+    "Agent", "AgentContext", "PluginMetadata", "PluginListItem",
+    "hist_add_message", "call_chat_model_turn", "hist_add_ai_response",
+}
+
+
+def _declares_framework_symbol(text: str) -> bool:
+    """True when a class/def/import line declares an A0 core symbol by name,
+    matched on whole tokens after punctuation normalization."""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not (line.startswith("class ")
+                or line.startswith("def ")
+                or line.startswith("import ")
+                or line.startswith("from ")):
+            continue
+        tokens = line.replace("(", " ").replace(")", " ").replace(":", " ").replace(",", " ").split()
+        if tokens[:2] == ["from", "agent"] or tokens[:2] == ["import", "agent"]:
+            return True
+        if any(token in FRAMEWORK_CONTENT_SYMBOLS for token in tokens):
+            return True
+    return False
+
+
+def _root_dir_smuggles_framework(directory: Path) -> bool:
+    """True when a plugin-owned root dir (api/webui/plugins) actually carries
+    framework source: a core file name at any depth or a core content marker."    """
+    for child in sorted(directory.rglob("*")):
+        if not child.is_file() or any(d in child.parts for d in SKIP_DIRS):
+            continue
+        if child.name in FRAMEWORK_FILE_NAMES:
+            return True
+        if child.suffix in {".py", ".html", ".js"}:
+            text = child.read_text(encoding="utf-8", errors="replace")
+            if _declares_framework_symbol(text):
+                return True
+    return False
 # Non-python plugin sources scanned for the same needle set: shell
 # provisioning + YAML/text config; comments stripped before matching.
 NEEDLE_TEXT_SUFFIXES = (".sh", ".bash", ".yaml", ".yml", ".txt", ".cfg",
@@ -318,12 +368,23 @@ def test_no_writes_outside_plugin_dir_except_rtk_binary():
 
 
 def test_no_framework_files_in_plugin_tree():
-    """repo ships no A0 core source files (any depth) and no A0 core dirs at the tree root (official extensions/python/ is allowed)."""
+    """repo ships no A0 core source files (any depth) and no framework source
+    under A0 core dir names at the tree root (official extensions/python/ is
+    allowed). Plugin-owned surface dirs (webui/, api/, plugins/) are sanctioned
+    layouts (ADR-007, helpers/plugins.py:292-293) and are exempt from the
+    directory-name ban UNLESS they actually carry framework source."""
     found = []
     for p in _scanned_files():
         rel = p.relative_to(PLUGIN_ROOT)
-        if p.name in FRAMEWORK_FILE_NAMES or rel.parts[0] in FRAMEWORK_ROOT_DIRS:
+        if p.name in FRAMEWORK_FILE_NAMES:
             found.append(str(rel))
+    for root_name in FRAMEWORK_ROOT_DIRS:
+        root_dir = PLUGIN_ROOT / root_name
+        if not root_dir.is_dir():
+            continue
+        if root_name in PLUGIN_OWNED_ROOT_DIRS and not _root_dir_smuggles_framework(root_dir):
+            continue
+        found.append(f"{root_name}/")
     assert not found, f"framework source inside plugin repo: {found}"
 
 
