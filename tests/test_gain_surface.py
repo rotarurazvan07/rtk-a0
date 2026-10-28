@@ -24,7 +24,10 @@ HANDLER_PY = COMMANDS_DIR / "rtk_gain_command.py"
 MAIN_HTML = WEBUI_DIR / "main.html"
 # dev-checkout route pin: the dev repo directory name is itself, so the
 # derived route still resolves to this path in the repo checkout
-PAGE_URL = "/plugins/rtk_a0/webui/main.html"
+# The expected page route must follow this repo's DIRECTORY name, exactly the way
+# a real install follows the manifest name: the handler derives it from its own
+# location, so the expectation follows the checkout directory in the same way.
+PAGE_URL = f"/plugins/{PLUGIN_ROOT.name}/webui/main.html"
 # the two install-relevant directory names the surface must never hardcode
 INSTALLED_NAMES = ("rtk_a0", "rtk_compression")
 # index/tool artifact dirs excluded from every structural scan (their contents
