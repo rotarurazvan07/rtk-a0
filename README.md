@@ -16,7 +16,7 @@ Search for **rtk** in Agent Zero's Plugin Hub and install.
 **Option 2: Git clone**
 
 ```bash
-git clone https://github.com/rotarurazvan07/rtk-a0.git usr/plugins/rtk_a0
+git clone https://github.com/rotarurazvan07/rtk-a0.git usr/plugins/rtk_compression
 ```
 
 ## How it works
@@ -57,10 +57,8 @@ Run **`rtk-gain`** from the command palette to open a read-only savings
 page. It fetches RTK's own accounting **once, when the page opens**, and
 shows the totals **as RTK formats them** — tokens saved and the savings
 percentage come from RTK's ledger; this plugin never recomputes or re-rounds
-them. A matching badge in the chat header shows the savings percentage at a
-glance, also fetched once when the chat page opens. While either surface is
-closed there is **no background polling and no network traffic**, and the
-plugin persists nothing.
+them. While the page is closed there is **no background polling and no network
+traffic**, and the plugin persists nothing.
 
 When RTK's ledger is empty (fresh install, no tracked commands yet) the page
 says so instead of showing zeros. When the RTK binary is unavailable, the

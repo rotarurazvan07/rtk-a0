@@ -485,7 +485,7 @@ def test_install_guards_logging_failures(hooks, monkeypatch):
 
 # ---------------------------------------------------------------------------
 # — Lifecycle Uninstall & Update Safety
-# Red phase: these tests are written against the Story-2.4 stub hooks and
+# Red phase: these tests are written against the pre-implementation stub hooks and
 # MUST fail until real uninstall/pre_update land (/2).
 # ---------------------------------------------------------------------------
 

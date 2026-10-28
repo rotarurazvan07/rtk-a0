@@ -398,8 +398,11 @@ def test_timeout_constant_pinned():
 def test_no_shell_true_and_single_mutation_point():
     """structural: shell=True never appears in plugin source; tool_args['code'] = written at exactly one place (single mutation point)."""
     tests_dir = PLUGIN_ROOT / "tests"
+    venv_dir = PLUGIN_ROOT / ".venv"
     for pyfile in PLUGIN_ROOT.rglob("*.py"):
         if tests_dir in pyfile.parents:  # skip test sources (they name the anti-pattern)
+            continue
+        if venv_dir in pyfile.parents:  # skip the project venv (third-party sources)
             continue
         src = pyfile.read_text()
         assert "shell=True" not in src, f"shell=True forbidden everywhere: {pyfile}"
@@ -1022,7 +1025,7 @@ def test_fail_open_branches_emit_no_log_noise():
         assert len(agent.warnings) == 0, f"{name}: notification is reserved for binary-missing"
 
 
-# ---: rc-3 acceptance gate (, CC -ESCALATION-1 Option A) ---
+# --- rc-3 acceptance gate ---
 
 def test_rc3_rewrite_applies_mutation():
     """A rewrite-available exit with differing non-empty stdout mutates tool_args at the single mutation point; no other key is touched."""
@@ -1243,7 +1246,7 @@ def test_no_plugin_owned_savings_persistence():
     # extension: gain-visibility must add nothing either —
     # no plugin-owned gain/savings LEDGER anywhere in the plugin tree. A ledger
     # is a persistence SURFACE (data-file suffix or a persistence primitive in
-    # the body); the sanctioned ADR-007 command surface (.command.yaml / handler
+    # the body); the sanctioned command surface (.command.yaml / handler
     # .py / page .js) is a UI surface that persists nothing and is not a ledger.
     LEDGER_SUFFIXES = {".json", ".db", ".sqlite", ".sqlite3", ".csv",
                        ".tsv", ".ndjson", ".parquet"}

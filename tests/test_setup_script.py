@@ -40,7 +40,7 @@ def _code_source() -> str:
 
 
 
-# Host-state isolation (CR-2.4-D1): a minimal controlled base PATH keeps the
+# Host-state isolation: a minimal controlled base PATH keeps the
 # suite deterministic on hosts that have a real rtk on PATH - inherited PATH
 # let host binaries shadow the stubs, making download/verify branches
 # unreachable (12 failures on rtk-equipped containers).
@@ -55,7 +55,7 @@ def _plan_env(root: Path) -> dict:
 
 
 def _run_plan(root: Path, cwd: Path | None = None) -> list[tuple[str, str]]:
-    """Run `setup.sh --print-download-plan` against a project root; return (name, url) pairs. Two-sided normalization discipline ( retro checklist): both sides of every comparison are stripped. Optional cwd proves CWD-independence."""
+    """Run `setup.sh --print-download-plan` against a project root; return (name, url) pairs. Two-sided normalization discipline ( two-sided comparison discipline): both sides of every comparison are stripped. Optional cwd proves CWD-independence."""
     proc = subprocess.run(
         ["bash", str(SETUP), "--print-download-plan"],
         cwd=str(cwd) if cwd else None,
@@ -947,7 +947,7 @@ def _run_network_failure(tmp_path: Path, rc: int, partial_bytes: int = 0, pin_te
 
 
 def _combined(proc) -> str:
-    """Two-sided normalized combined output ( retro discipline)."""
+    """Two-sided normalized combined output ( two-sided comparison discipline)."""
     return (proc.stdout + "\n" + proc.stderr).strip()
 
 
@@ -1108,7 +1108,7 @@ def test_agent_fail_open_bridge_pointer(tmp_path):
 # regression tests (/T18v2/-#4):
 # install-surface and classification boundaries pinned by the review.
 # Each test below fails if its corresponding in-review patch is reverted
-# (mutation-kill validated in the CR record).
+# (mutation-validated).
 # ---------------------------------------------------------------------------
 
 
