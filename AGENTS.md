@@ -30,7 +30,7 @@ included):
 The rule file itself and the enforcement test that names the banned patterns
 are excluded from the scan. Tool index directories (`.venv`, `.git`,
 `.serena`, `.neuralmind`, `.desloppify`, `.github`, `.a0proj`,
-`__pycache__`) are excluded — their artifacts legitimately contain tokens
+`__pycache__`, `graphify-out`) are excluded — their artifacts legitimately contain tokens
 that look like the banned shapes.
 
 Rewriting a comment or docstring to drop an id is comment-only work: when
@@ -49,7 +49,7 @@ Or grep the surface with the same pattern (must print nothing):
 
 ```
 grep -rInE 'AC-[0-9]|\b(FR|NFR)[0-9]+|ADR-[0-9]+|\bStory[\s-][0-9]|\b(CR|DS|ER)[\s-][0-9]|\bEpic[ ]+[0-9]|\bsprint\b|\bretrospective\b|\bBMAD\b|\bmutation-kill\b|\bescalation\b|\bD-[0-9]{1,2}\b' \
-  --exclude-dir={.venv,.git,.serena,.neuralmind,.desloppify,.github,.a0proj,__pycache__} \
+  --exclude-dir={.venv,.git,.serena,.neuralmind,.desloppify,.github,.a0proj,__pycache__,graphify-out} \
   --exclude=AGENTS.md --exclude=test_internal_mentions.py \
   commands api webui extensions scripts tests README.md
 ```

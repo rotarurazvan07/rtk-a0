@@ -32,7 +32,7 @@ PAGE_URL = f"/plugins/{PLUGIN_ROOT.name}/webui/main.html"
 INSTALLED_NAMES = ("rtk_a0", "rtk_compression")
 # index/tool artifact dirs excluded from every structural scan (their contents
 # legitimately contain needle-like tokens)
-SCAN_EXCLUDED_PARTS = (".venv", ".git", ".serena", ".neuralmind", ".desloppify", ".github", ".a0proj")
+SCAN_EXCLUDED_PARTS = (".venv", ".git", ".serena", ".neuralmind", ".desloppify", ".github", ".a0proj", "graphify-out")
 
 
 def _load_handler():
@@ -626,12 +626,24 @@ def test_no_agent_loop_or_lifecycle_changes_vs_baseline():
     surface (the removed badge surface chat-header badge) ships a sanctioned plugin-owned
     frontend asset under extensions/webui/chat-top-start/ per the 2026-10-25
     the approved architecture addendum — the badge-surface pin below carries that half; this pin
-    guards the agent loop itself.
+    guards the agent loop itself; the boot-time re-provisioning entrypoint
+    (hooks.py + exactly one startup_migration extension) is the sanctioned
+    exception, pinned exactly below.
     """
-    diff = _git(["diff", "--stat", _background_baseline(), "--", "extensions/python", "hooks.py", "scripts", "plugin.yaml", "rtk_pin.txt"])
+    diff = _git(["diff", "--name-only", _background_baseline(), "--", "extensions/python", "hooks.py", "scripts", "plugin.yaml", "rtk_pin.txt"])
     if diff is None:
         pytest.skip("git unavailable: absence audit via diff not possible")
-    assert diff.strip() == "", f"this feature must not touch background surfaces; diff:\n{diff}"
+    changed = {ln.strip() for ln in diff.splitlines() if ln.strip()}
+    assert changed == {"hooks.py"}, f"unsanctioned background-surface changes: {sorted(changed)}"
+    ext_modules = sorted(
+        str(p.relative_to(PLUGIN_ROOT))
+        for p in (PLUGIN_ROOT / "extensions" / "python").rglob("*.py")
+        if "__pycache__" not in p.parts and "graphify-out" not in p.parts
+    )
+    assert ext_modules == [
+        "extensions/python/startup_migration/_10_rtk_bootstrap.py",
+        "extensions/python/tool_execute_before/_10_rtk_intercept.py",
+    ], ext_modules
     manifest = yaml.safe_load((PLUGIN_ROOT / "plugin.yaml").read_text(encoding="utf-8"))
     for banned_key in ("mcp_servers", "mcpServers", "scheduled_tasks", "cron", "hooks_extra"):
         assert banned_key not in manifest, f"manifest must not gain background surface {banned_key!r}"
@@ -1587,11 +1599,24 @@ def test_page_ships_exactly_one_script_block_and_no_external_assets():
 # ---------------------------------------------------------------------------
 
 def test_surface_set_adds_no_agent_loop_or_lifecycle_changes():
-    """zero extensions/python, hooks, scheduled-task, MCP additions."""
-    diff = _git(["diff", "--stat", _background_baseline(), "--", "extensions/python", "hooks.py", "scripts", "plugin.yaml", "rtk_pin.txt"])
+    """zero background-surface additions beyond the sanctioned boot-time
+    re-provisioning delta: tracked changes limited to hooks.py, extension
+    modules limited to the intercept plus exactly one startup_migration
+    boot extension; scheduled-task and MCP surface still fully absent."""
+    diff = _git(["diff", "--name-only", _background_baseline(), "--", "extensions/python", "hooks.py", "scripts", "plugin.yaml", "rtk_pin.txt"])
     if diff is None:
         pytest.skip("git unavailable: absence audit via diff not possible")
-    assert diff.strip() == "", f"this story must not touch background surfaces; diff:\n{diff}"
+    changed = {ln.strip() for ln in diff.splitlines() if ln.strip()}
+    assert changed == {"hooks.py"}, f"unsanctioned background-surface changes: {sorted(changed)}"
+    ext_modules = sorted(
+        str(p.relative_to(PLUGIN_ROOT))
+        for p in (PLUGIN_ROOT / "extensions" / "python").rglob("*.py")
+        if "__pycache__" not in p.parts and "graphify-out" not in p.parts
+    )
+    assert ext_modules == [
+        "extensions/python/startup_migration/_10_rtk_bootstrap.py",
+        "extensions/python/tool_execute_before/_10_rtk_intercept.py",
+    ], ext_modules
     manifest = yaml.safe_load((PLUGIN_ROOT / "plugin.yaml").read_text(encoding="utf-8"))
     for banned_key in ("mcp_servers", "mcpServers", "scheduled_tasks", "cron", "hooks_extra"):
         assert banned_key not in manifest, f"manifest must not gain background surface {banned_key!r}"

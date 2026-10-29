@@ -22,6 +22,7 @@ RULE_IDS = {
 PROD_TARGETS = [
     "scripts/setup.sh", "hooks.py", "plugin.yaml",
     "extensions/python/tool_execute_before/_10_rtk_intercept.py",
+    "extensions/python/startup_migration/_10_rtk_bootstrap.py",
     "commands/rtk-gain.command.yaml", "commands/rtk_gain_command.py",
     "api/rtk_gain.py", "api/__init__.py",
     "webui/main.html",
@@ -173,6 +174,7 @@ def test_prod_targets_matches_the_real_production_file_set():
         and ".venv" not in p.parts
         and ".git" not in p.parts
         and not any(part.startswith(".") for part in p.relative_to(ROOT).parts[:-1])
+        and "graphify-out" not in p.parts
     }
     real -= {"tests/" + f.name for f in (ROOT / "tests").glob("test_*.py")}
     assert set(PROD_TARGETS) == real, (

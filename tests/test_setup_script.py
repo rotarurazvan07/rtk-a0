@@ -1018,11 +1018,11 @@ def test_self_check_failure_warns_and_rolls_back(tmp_path):
 def test_warned_setup_leaves_snapshot_clean(tmp_path):
     """after warned exit-0 runs the plugin tree has no new files. Captures the full plugin-root snapshot before/after and asserts no stray state was written into the repo (warn paths must stay read-only w.r.t. the project tree)."""
     before = {p.relative_to(PLUGIN_ROOT): p.stat().st_mtime_ns
-              for p in PLUGIN_ROOT.rglob("*") if ".pytest_cache" not in p.parts and "__pycache__" not in p.parts}
+              for p in PLUGIN_ROOT.rglob("*") if ".pytest_cache" not in p.parts and "__pycache__" not in p.parts and "graphify-out" not in p.parts}
     proc, install_dir, _log, _staging = _run_network_failure(tmp_path, rc=7)
     assert proc.returncode == 0, _combined(proc)
     after = {p.relative_to(PLUGIN_ROOT): p.stat().st_mtime_ns
-             for p in PLUGIN_ROOT.rglob("*") if ".pytest_cache" not in p.parts and "__pycache__" not in p.parts}
+             for p in PLUGIN_ROOT.rglob("*") if ".pytest_cache" not in p.parts and "__pycache__" not in p.parts and "graphify-out" not in p.parts}
     assert before == after, "warned run must not modify the plugin tree"
 
 

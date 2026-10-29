@@ -1239,7 +1239,7 @@ def test_no_plugin_owned_savings_persistence():
         if candidate.suffix != ".json" and "stats" not in candidate.name and "state" not in candidate.name:
             continue
         parts = candidate.relative_to(PLUGIN_ROOT).parts
-        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", ".desloppify", ".neuralmind")):
+        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", ".desloppify", ".neuralmind", "graphify-out")):
             continue
         owned.append(str(candidate))
     assert not owned, f"plugin-owned persistence surface exists: {owned}"
@@ -1261,7 +1261,7 @@ def test_no_plugin_owned_savings_persistence():
         if "gain" not in name and "saving" not in name and "stats" not in name:
             continue
         parts = candidate.relative_to(PLUGIN_ROOT).parts
-        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", "docs", "node_modules", ".venv", ".desloppify", ".neuralmind")):
+        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", "docs", "node_modules", ".venv", ".desloppify", ".neuralmind", "graphify-out")):
             continue
         is_persistence_surface = candidate.suffix in LEDGER_SUFFIXES
         if not is_persistence_surface and candidate.suffix in {".py", ".js", ".html", ".htm"}:
@@ -1275,3 +1275,24 @@ def test_no_plugin_owned_savings_persistence():
         body = text_path.read_text()
         for needle in ("stats.json", "gain.json", "savings.json"):
             assert needle not in body, f"{text_path.name} must not persist {needle}"
+
+
+def test_next_session_rtk_present_resumes_compression_no_warning():
+    """Per-session latch semantics (confirmation only — no intercept change):
+    in a *next* session where boot re-provisioning restored rtk, a fresh
+    agent.data carries no warn-once flag; with rtk present the guard
+    delegates for a non-rtk-prefixed command and stays silent — zero
+    warnings, the rewrite applied."""
+    agent = _StubAgent()
+    ext = _load_ext_with_agent(agent)
+    tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
+    snapshot = dict(tool_args)
+    with patch("shutil.which", return_value="/usr/local/bin/rtk"), patch(
+        "subprocess.run", side_effect=_fake_run(rc=0, stdout="rtk git status\n")
+    ):
+        ext.execute(tool_name="code_execution_tool", tool_args=tool_args)
+    assert tool_args["code"] == "rtk git status", "guard delegated once rtk is available"
+    missing = [w for w in agent.warnings if "unavailable" in str(w.get("content", "")).lower()]
+    assert missing == [], f"no missing-binary warning in the next session: {missing}"
+    assert agent.data.get("rtk_a0_missing_warned") is not True
+    assert tool_args["runtime"] == snapshot["runtime"], "only 'code' may be written"

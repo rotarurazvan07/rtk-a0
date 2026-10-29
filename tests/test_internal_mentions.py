@@ -45,6 +45,7 @@ SCAN_EXCLUDED_PARTS = (
     ".github",
     ".a0proj",
     "__pycache__",
+    "graphify-out",
 )
 SCAN_DIRS = ("commands", "api", "webui", "extensions", "scripts", "tests")
 # CR-4-5 review: root-level publishables are scanned too (the ban

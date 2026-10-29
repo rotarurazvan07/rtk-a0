@@ -25,6 +25,8 @@ git clone https://github.com/rotarurazvan07/rtk-a0.git usr/plugins/rtk_compressi
 2. Before each terminal command runs, the plugin calls `rtk rewrite <command>`.
 3. If RTK returns a rewrite, that runs instead. Otherwise the original command runs.
 
+**Automatic recovery:** if the RTK binary is missing or its version no longer matches `rtk_pin.txt` — for example after a container restart or an image rebuild — the plugin re-provisions it in the background the next time Agent Zero starts. No configuration is needed, and the check costs one `rtk --version` call when the binary is already correct. Uninstalling the plugin still leaves the user-owned binary at `/usr/local/bin/rtk` in place.
+
 Rewritten commands still pass through Agent Zero's normal permission layer. The plugin never bypasses approvals.
 
 ## Check that it's working
