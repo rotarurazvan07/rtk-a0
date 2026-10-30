@@ -313,6 +313,8 @@ globalThis.createRtkGainStore = createRtkGainStore;
 var _rtkGainStore = createRtkGainStore();
 if (typeof Alpine !== "undefined" && Alpine.store) {
   Alpine.store("rtkGain", _rtkGainStore);
+} else {
+  document.addEventListener("alpine:init", () => Alpine.store("rtkGain", _rtkGainStore));
 }
 </script>
 
