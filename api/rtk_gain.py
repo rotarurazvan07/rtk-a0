@@ -37,6 +37,21 @@ _TEXT_INPUT = re.compile(r"^Input tokens:\s+(?P<value>\S+)\s*$", re.MULTILINE)
 _TEXT_OUTPUT = re.compile(r"^Output tokens:\s+(?P<value>\S+)\s*$", re.MULTILINE)
 _TEXT_EXEC = re.compile(r"^Total exec time:\s+(?P<value>.+?)\s*$", re.MULTILINE)
 _TEXT_EXCLUDED = re.compile(r"^Excluded:\s+(?P<count>\d+)\s+oversized", re.MULTILINE)
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+def _terminal_text() -> str:
+    """Plain `rtk gain` output, verbatim (ANSI stripped). Empty string on any failure."""
+    try:
+        proc = subprocess.run(
+            ["rtk", "gain"],
+            capture_output=True,
+            timeout=RTK_GAIN_TIMEOUT,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return ""
+    return _ANSI.sub("", proc.stdout) if proc.returncode == 0 else ""
 
 class RtkGain(ApiHandler):
     """Auth-gated read-only projection of RTK's own savings accounting."""
@@ -79,10 +94,10 @@ class RtkGain(ApiHandler):
         parsed = _parse_summary(proc.stdout)
         if parsed is None:
             return self._fail("unparseable-output", "rtk gain output could not be parsed")
-        return self._ok(parsed)
+        return self._ok(parsed, _terminal_text())
 
     @staticmethod
-    def _ok(summary: dict) -> dict:
+    def _ok(summary: dict, terminal: str = "") -> dict:
         headline = _format_headline(summary)
         return {
             "ok": True,
@@ -91,6 +106,7 @@ class RtkGain(ApiHandler):
             "message": headline,
             "error": "",
             "summary": summary,
+            "terminal": terminal,
             "source": "json" if "avg_savings_pct" in summary else "text",
         }
 

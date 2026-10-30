@@ -20,19 +20,33 @@
 
       <template x-if="$store.rtkGain.renderView().view === 'headline'">
         <div class="rtk-gain-headline">
-          <h1>RTK savings</h1>
-          <p class="rtk-gain-headline-figure" x-text="$store.rtkGain.renderView().headline"></p>
-          <dl class="rtk-gain-fields">
-            <template x-for="field in $store.rtkGain.renderView().fields" :key="field.label">
-              <div>
-                <dt x-text="field.label"></dt>
-                <dd x-text="field.value"></dd>
-              </div>
-            </template>
-          </dl>
-          <p class="rtk-gain-source-note">
-            These are RTK's own accounting numbers, shown as RTK formats them.
-          </p>
+
+          <!-- terminal view: RTK's own text, styled -->
+          <template x-if="$store.rtkGain.term()">
+            <div class="rtk-term">
+              <template x-for="(line, i) in $store.rtkGain.term()" :key="i"><div><template x-for="(seg, j) in line" :key="j"><span :class="seg.c" x-text="seg.t"></span></template></div></template>
+            </div>
+          </template>
+
+          <!-- fallback: old view when no terminal text came back -->
+          <template x-if="!$store.rtkGain.term()">
+            <div>
+              <h1>RTK savings</h1>
+              <p class="rtk-gain-headline-figure" x-text="$store.rtkGain.renderView().headline"></p>
+              <dl class="rtk-gain-fields">
+                <template x-for="field in $store.rtkGain.renderView().fields" :key="field.label">
+                  <div>
+                    <dt x-text="field.label"></dt>
+                    <dd x-text="field.value"></dd>
+                  </div>
+                </template>
+              </dl>
+              <p class="rtk-gain-source-note">
+                These are RTK's own accounting numbers, shown as RTK formats them.
+              </p>
+            </div>
+          </template>
+
         </div>
       </template>
 
@@ -48,6 +62,25 @@
     </template>
 
   </div>
+
+  <style>
+    .rtk-term {
+      background: #0c0c0c; color: #cccccc; padding: 14px 16px; border-radius: 6px;
+      font: 13px/1.25 "Cascadia Mono", "JetBrains Mono", Consolas, "DejaVu Sans Mono", monospace;
+      white-space: pre; overflow-x: auto; max-width: 100%;
+    }
+    .rtk-term .t-title   { color: #16c60c; font-weight: 700; }
+    .rtk-term .t-section { color: #3a96dd; font-weight: 700; }
+    .rtk-term .t-rule    { color: #5a5a5a; }
+    .rtk-term .t-head    { color: #f2f2f2; font-weight: 700; }
+    .rtk-term .t-cmd     { color: #61d6d6; font-weight: 700; }
+    .rtk-term .t-good    { color: #16c60c; }
+    .rtk-term .t-mid     { color: #f9f1a5; }
+    .rtk-term .t-bad     { color: #f78166; }
+    .rtk-term .t-meter   { color: #16c60c; }
+    .rtk-term .t-impact  { color: #61d6d6; }
+    .rtk-term .t-dim     { opacity: .3; }
+  </style>
 
   <script>
 // RTK savings page store (slash-command surface, zero-load contract).
@@ -114,6 +147,7 @@ var createRtkGainStore = () => ({
   status: "idle", // idle | loading | ready | error
   notice: "", // friendly copy for the ready-but-nothing-to-show states
   message: "", // RTK's own headline string (endpoint-provided, verbatim)
+  terminal: "", // verbatim `rtk gain` text from the endpoint
   error: "", // network-level failure text (error state, not a notice)
   view: { view: "loading" }, // render projection for the page
   summary: null, // endpoint summary (rendered as-is, never recomputed)
@@ -177,6 +211,7 @@ var createRtkGainStore = () => ({
       this.summary = data.summary;
       this.source = String(data.source || "json");
       this.message = String(data.message || "RTK savings available");
+      this.terminal = String(data.terminal || "");
       this.notice = "";
       this.status = "ready";
       this._emit("status", "loading", "ready");
@@ -283,6 +318,43 @@ var createRtkGainStore = () => ({
     return { view: "headline", headline: this.message || "RTK savings available", fields };
   },
 
+  term() {
+    // terminal projection: RTK's own text, split into styled segments per line
+    if (this.status !== "ready" || this.notice || !this.terminal) return null;
+    const pctCls = (p) => (p >= 70 ? "t-good" : p >= 40 ? "t-mid" : "t-bad");
+    const bar = (s, c) => {
+      const m = s.match(/^(█*)(░*)$/);
+      return m ? [{ t: m[1], c }, { t: m[2], c: c + " t-dim" }] : [{ t: s, c: "" }];
+    };
+    return this.terminal.replace(/\s+$/, "").split("\n").map((line) => {
+      let m;
+      if (/^RTK Token Savings/.test(line)) return [{ t: line, c: "t-title" }];
+      if (/^\s*[═─]{5,}\s*$/.test(line)) return [{ t: line, c: "t-rule" }];
+      if (/^By Command/.test(line)) return [{ t: line, c: "t-section" }];
+      if (/^\s*#\s+Command/.test(line)) return [{ t: line, c: "t-head" }];
+      if (/^\s*[▶►▸]/.test(line)) return [{ t: line, c: "t-good" }];
+      if ((m = line.match(/^(Efficiency meter:\s+)([█░]+)(\s+)(\d+(?:\.\d+)?)%\s*$/))) {
+        return [
+          { t: m[1], c: "" },
+          ...bar(m[2], "t-meter"),
+          { t: m[3], c: "" },
+          { t: m[4] + "%", c: pctCls(parseFloat(m[4])) },
+        ];
+      }
+      if ((m = line.match(/^(\s*\d+\.\s+)(.*?)(\s+\d+\s+\S+\s+)(\d+(?:\.\d+)?)%(\s+\S+\s+)([█░]+)\s*$/))) {
+        return [
+          { t: m[1], c: "" },
+          { t: m[2], c: "t-cmd" },
+          { t: m[3], c: "" },
+          { t: m[4] + "%", c: pctCls(parseFloat(m[4])) },
+          { t: m[5], c: "" },
+          ...bar(m[6], "t-impact"),
+        ];
+      }
+      return [{ t: line || " ", c: "" }];
+    });
+  },
+
   _emit(type, from, to) {
     const entry = to === undefined ? { type } : { type, from, to };
     this.events.push(entry);
@@ -298,6 +370,7 @@ var createRtkGainStore = () => ({
     this.status = "idle";
     this.notice = "";
     this.message = "";
+    this.terminal = "";
     this.error = "";
     this.view = { view: "loading" };
     this.summary = null;
