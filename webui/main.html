@@ -15,47 +15,19 @@
       <p x-text="$store.rtkGain.error"></p>
     </div>
 
-    <!-- ready state: either the headline view or a notice view -->
+    <!-- ready state: terminal view (primary) or notice -->
     <template x-if="$store.rtkGain.status === 'ready'">
 
-      <template x-if="$store.rtkGain.renderView().view === 'headline'">
-        <div class="rtk-gain-headline">
-
-          <!-- terminal view: RTK's own text, styled -->
-          <template x-if="$store.rtkGain.term()">
-            <div class="rtk-term">
-              <template x-for="(line, i) in $store.rtkGain.term()" :key="i"><div><template x-for="(seg, j) in line" :key="j"><span :class="seg.c" x-text="seg.t"></span></template></div></template>
-            </div>
-          </template>
-
-          <!-- fallback: old view when no terminal text came back -->
-          <template x-if="!$store.rtkGain.term()">
-            <div>
-              <h1>RTK savings</h1>
-              <p class="rtk-gain-headline-figure" x-text="$store.rtkGain.renderView().headline"></p>
-              <dl class="rtk-gain-fields">
-                <template x-for="field in $store.rtkGain.renderView().fields" :key="field.label">
-                  <div>
-                    <dt x-text="field.label"></dt>
-                    <dd x-text="field.value"></dd>
-                  </div>
-                </template>
-              </dl>
-              <p class="rtk-gain-source-note">
-                These are RTK's own accounting numbers, shown as RTK formats them.
-              </p>
-            </div>
-          </template>
-
+      <template x-if="$store.rtkGain.term()">
+        <div class="rtk-term">
+          <template x-for="(line, i) in $store.rtkGain.term()" :key="i"><div><template x-for="(seg, j) in line" :key="j"><span :class="seg.c" x-text="seg.t"></span></template></div></template>
         </div>
       </template>
 
-      <template x-if="$store.rtkGain.renderView().view === 'notice'">
+      <template x-if="!$store.rtkGain.term()">
         <div class="rtk-gain-notice">
           <h1>RTK savings</h1>
-          <!-- static default copy is the empty-ledger state; x-text overrides
-               it with the specific notice (missing rtk / endpoint fail) -->
-          <p x-text="$store.rtkGain.renderView().notice">RTK has no tracked commands yet. Savings appear here once commands run through the plugin.</p>
+          <p x-text="$store.rtkGain.notice"></p>
         </div>
       </template>
 
@@ -80,6 +52,7 @@
     .rtk-term .t-meter   { color: #16c60c; }
     .rtk-term .t-impact  { color: #61d6d6; }
     .rtk-term .t-dim     { opacity: .3; }
+    .rtk-gain-notice { padding: 1rem; color: #aaa; }
   </style>
 
   <script>
@@ -119,39 +92,12 @@ function rtkGainEndpointFromElement($el) {
 // (events[] discipline). 64 entries is far beyond any diagnostic need.
 var RTK_GAIN_EVENTS_MAX = 64;
 
-// Friendly copy for the notice states (the endpoint answers structured bodies;
-// raw reason strings never reach the user - consumed at this layer).
-var RTK_GAIN_NOTICES = {
-  "rtk-missing":
-    "The RTK binary was not found on PATH, so there are no savings to show " +
-    "yet. Re-run setup from the plugin directory to provision it - see the " +
-    "Troubleshooting section of the README.",
-  "timeout":
-    "RTK did not answer in time, so the summary could not be read. RTK's own " +
-    "accounting is unchanged - try opening the page again.",
-  "spawn-failed":
-    "RTK could not be started, so the summary could not be read. Try opening " +
-    "the page again - see the README Troubleshooting section if it repeats.",
-  "nonzero-exit":
-    "RTK exited with an error this time, so the summary could not be read. " +
-    "RTK's own accounting is unchanged - try opening the page again.",
-  "unparseable-output":
-    "RTK's output could not be read in a known format. RTK's own accounting " +
-    "is unchanged - try opening the page again.",
-  "unexpected-error":
-    "The savings summary could not be read this time. Agent Zero and RTK are " +
-    "unaffected - try opening the page again.",
-};
-
 var createRtkGainStore = () => ({
   status: "idle", // idle | loading | ready | error
   notice: "", // friendly copy for the ready-but-nothing-to-show states
-  message: "", // RTK's own headline string (endpoint-provided, verbatim)
   terminal: "", // verbatim `rtk gain` text from the endpoint
   error: "", // network-level failure text (error state, not a notice)
   view: { view: "loading" }, // render projection for the page
-  summary: null, // endpoint summary (rendered as-is, never recomputed)
-  source: "none", // json | text (which parse produced the summary)
   events: [], // bounded lifecycle log
   _mount: 0, // monotonic mount generation (stale-response guard)
 
@@ -202,16 +148,13 @@ var createRtkGainStore = () => ({
   },
 
   handle(data) {
-    // consume the endpoint contract: ok+summary -> headline/empty-ledger,
+    // consume the endpoint contract: ok+terminal -> terminal view,
     // anything else -> a friendly notice (never raw error chrome).
     // a response from a torn-down mount (or any non-loading state) is
     // dropped here - the machine only advances from loading
     if (this.status !== "loading") return;
-    if (data && data.ok === true && data.summary) {
-      this.summary = data.summary;
-      this.source = String(data.source || "json");
-      this.message = String(data.message || "RTK savings available");
-      this.terminal = String(data.terminal || "");
+    if (data && data.ok === true && data.terminal) {
+      this.terminal = String(data.terminal);
       this.notice = "";
       this.status = "ready";
       this._emit("status", "loading", "ready");
@@ -219,23 +162,22 @@ var createRtkGainStore = () => ({
     }
     const reason = String((data && data.error) || "").split(":")[0].trim();
     if (data && data.rtk_available === false) {
-      this.notice = RTK_GAIN_NOTICES["rtk-missing"];
-    } else if (RTK_GAIN_NOTICES[reason]) {
-      this.notice = RTK_GAIN_NOTICES[reason];
+      this.notice = "The RTK binary was not found on PATH, so there are no savings to show yet. Re-run setup from the plugin directory to provision it - see the Troubleshooting section of the README.";
+    } else if (reason === "timeout") {
+      this.notice = "RTK did not answer in time, so the summary could not be read. RTK's own accounting is unchanged - try opening the page again.";
+    } else if (reason === "spawn-failed") {
+      this.notice = "RTK could not be started, so the summary could not be read. Try opening the page again - see the README Troubleshooting section if it repeats.";
+    } else if (reason === "nonzero-exit") {
+      this.notice = "RTK exited with an error this time, so the summary could not be read. RTK's own accounting is unchanged - try opening the page again.";
+    } else if (reason === "unparseable-output") {
+      this.notice = "RTK's output could not be read in a known format. RTK's own accounting is unchanged - try opening the page again.";
     } else {
-      this.notice = RTK_GAIN_NOTICES["unexpected-error"];
+      this.notice = "The savings summary could not be read this time. Agent Zero and RTK are unaffected - try opening the page again.";
     }
-    this.summary = null;
+    this.terminal = "";
     this.status = "ready";
     this._emit("status", "loading", "ready");
     return "notice";
-  },
-
-  complete() {
-    // test/transition seam: fetch-less resolution of the loading state
-    if (this.status !== "loading") return;
-    this.status = "ready";
-    this._emit("status", "loading", "ready");
   },
 
   fail(message) {
@@ -245,82 +187,9 @@ var createRtkGainStore = () => ({
     this._emit("status", "loading", "error");
   },
 
-  renderView() {
-    // pure projection of state -> what the page renders. The headline is the
-    // endpoint's own string verbatim; pct gets ONE display format and is
-    // never recomputed from counts; supporting fields are display-level
-    // humanization only. Non-finite/non-numeric values render as "n/a".
-    if (this.status !== "ready") {
-      if (this.status === "error") return { view: "error", error: this.error };
-      return { view: "loading" };
-    }
-    const summary = this.summary || {};
-    // n/a for anything that is not a finite number; a string keeps its
-    // verbatim value (RTK's own text formatting) but NaN/Infinity/booleans
-    // never surface as page literals
-    const num = (v) => typeof v === "number" && isFinite(v);
-    const group = (v) => {
-      if (typeof v === "number") return isFinite(v) ? v.toLocaleString("en-US") : "n/a";
-      if (typeof v === "boolean" || v == null) return "n/a";
-      return String(v);
-    };
-    // a specific fail-state notice always wins over any data-driven state
-    if (this.notice) return { view: "notice", notice: this.notice };
-    // no numeric activity at all (empty object, missing counters, or
-    // all-zero) is a distinct friendly state, not a headline of n/a fields
-    if (
-      !summary ||
-      typeof summary.total_commands !== "number" ||
-      Number(summary.total_commands) === 0 ||
-      Number(summary.total_input) === 0
-    ) {
-      return {
-        view: "notice",
-        notice:
-          "RTK has no tracked commands yet. Savings appear here once " +
-          "commands run through the plugin - the numbers come from RTK's " +
-          "own accounting.",
-      };
-    }
-    const fields = [];
-    if (this.source === "text") {
-      // text-fallback fields render RTK's parsed strings as-is
-      fields.push({ label: "Tokens saved", value: String(summary.saved_text || "n/a") });
-      fields.push({
-        label: "Avg savings",
-        value: num(summary.savings_pct_text) ? summary.savings_pct_text.toFixed(1) + "%" : "n/a",
-      });
-      fields.push({ label: "Total commands", value: group(summary.total_commands) });
-      if (summary.input_text != null)
-        fields.push({ label: "Input tokens", value: String(summary.input_text) });
-      if (summary.output_text != null)
-        fields.push({ label: "Output tokens", value: String(summary.output_text) });
-      if (summary.exec_time_text != null)
-        fields.push({ label: "Exec time", value: String(summary.exec_time_text) });
-      if (summary.oversized_excluded != null)
-        fields.push({ label: "Excluded (oversized)", value: group(summary.oversized_excluded) });
-    } else {
-      // json source: raw numeric fields, display-level humanization only
-      fields.push({ label: "Tokens saved", value: group(summary.total_saved) });
-      fields.push({
-        label: "Avg savings",
-        value: num(summary.avg_savings_pct) ? summary.avg_savings_pct.toFixed(1) + "%" : "n/a",
-      });
-      fields.push({ label: "Total commands", value: group(summary.total_commands) });
-      fields.push({ label: "Input tokens", value: group(summary.total_input) });
-      fields.push({ label: "Output tokens", value: group(summary.total_output) });
-      fields.push({
-        label: "Exec time",
-        value: num(summary.total_time_ms) ? (summary.total_time_ms / 1000).toFixed(1) + " s" : "n/a",
-      });
-      fields.push({ label: "Excluded (oversized)", value: group(summary.oversized_excluded) });
-    }
-    return { view: "headline", headline: this.message || "RTK savings available", fields };
-  },
-
   term() {
     // terminal projection: RTK's own text, split into styled segments per line
-    if (this.status !== "ready" || this.notice || !this.terminal) return null;
+    if (this.status !== "ready" || !this.terminal) return null;
     const pctCls = (p) => (p >= 70 ? "t-good" : p >= 40 ? "t-mid" : "t-bad");
     const bar = (s, c) => {
       const m = s.match(/^(█*)(░*)$/);
@@ -369,12 +238,9 @@ var createRtkGainStore = () => ({
     // loading-state guards in handle()/fail()).
     this.status = "idle";
     this.notice = "";
-    this.message = "";
     this.terminal = "";
     this.error = "";
     this.view = { view: "loading" };
-    this.summary = null;
-    this.source = "none";
     this.events = [];
     this._mount += 1;
   },

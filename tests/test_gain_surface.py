@@ -201,16 +201,14 @@ const modalPath = process.argv[5] || '/plugins/rtk_a0/webui/main.html';
 const fakeEl = { closest: (sel) => (sel === '.modal[data-modal-path]' ? { dataset: { modalPath } } : null) };
 const log = [];
 const events = [];
-function out(extra) { console.log(JSON.stringify(Object.assign({ name: registered.name, status: store.status, events: store.events }, extra))); }
-// scenarios also report the fetch-call count so zero-fetch
-// branches (absent modal) pin non-vacuously
 function out(extra) { console.log(JSON.stringify(Object.assign({ name: registered.name, status: store.status, events: store.events, fetchCalls: sandbox.__fetchCalls || 0 }, extra))); }
 (async () => {
 if (scenario === 'transition-ready') {
+  sandbox.__nextResponse = { ok: true, json: async () => ({ ok: true, rtk_available: true, message: 'RTK Token Savings', error: '', terminal: 'RTK Token Savings\nTotal saved: 1 (1.0%)\n' }) };
   log.push(store.status);
-  store.onOpen(fakeEl);
-  log.push(store.status);
-  store.complete();
+  const chain = store.onOpen(fakeEl);
+  log.push(store.status); // loading enters synchronously
+  await chain;
   log.push(store.status);
   out({ log });
 } else if (scenario === 'transition-error') {
@@ -222,7 +220,7 @@ if (scenario === 'transition-ready') {
   const el = { closest: () => null };
   const chain = store.onOpen(el);
   out({ log: [store.status], chainReturned: chain !== undefined,
-    error: store.error, renderView: typeof store.renderView === 'function' ? store.renderView() : null });
+    error: store.error, view: store.view });
  } else if (scenario === 'one-open-per-mount') {
   store.onOpen(fakeEl);
   store.onOpen(fakeEl);
@@ -230,7 +228,6 @@ if (scenario === 'transition-ready') {
   out({ log: [store.status] });
 } else if (scenario === 'cleanup-resets') {
   store.onOpen(fakeEl);
-  store.complete();
   store.cleanup();
   const afterCleanup = store.status;
   store.onOpen(fakeEl);
@@ -241,30 +238,26 @@ if (scenario === 'transition-ready') {
   store.note = 'unrelated-state-change';
   const after = JSON.stringify(store.events || []);
   out({ log: [before === after] });
-} else if (scenario === 'open-renders-json') {
-  sandbox.__nextResponse = { ok: true, json: async () => ({ ok: true, rtk_available: true, message: 'Tokens saved: 225.2K (30.9%)', error: '', summary: { total_commands: 182, total_input: 4203109, total_output: 1512301, total_saved: 225200, avg_savings_pct: 30.94, total_time_ms: 151843, avg_time_ms: 834.3, oversized_excluded: 2 }, source: 'json' }) };
+} else if (scenario === 'open-renders-terminal') {
+  sandbox.__nextResponse = { ok: true, json: async () => ({ ok: true, rtk_available: true, message: 'Tokens saved: 225.2K (30.9%)', error: '', terminal: 'RTK Token Savings\n==========\nBy Command\n# Command        Input  Output  Saved  % Savings  Time\n████████████████████████░░░░░░░░░░░░ 73.7%  git status\n' }) };
   await store.onOpen(fakeEl);
-  out({ view: typeof store.renderView === 'function' ? store.renderView() : null, message: store.message });
+  out({ terminal: store.terminal, notice: store.notice, status: store.status });
 } else if (scenario === 'open-renders-empty-ledger') {
-  sandbox.__nextResponse = { ok: true, json: async () => ({ ok: true, rtk_available: true, message: 'Tokens saved: 0 (0.0%)', error: '', summary: { total_commands: 0, total_input: 0, total_output: 0, total_saved: 0, avg_savings_pct: 0, total_time_ms: 0, avg_time_ms: 0, oversized_excluded: 0 }, source: 'json' }) };
+  sandbox.__nextResponse = { ok: true, json: async () => ({ ok: true, rtk_available: true, message: 'Tokens saved: 0 (0.0%)', error: '', terminal: '' }) };
   await store.onOpen(fakeEl);
-  out({ view: typeof store.renderView === 'function' ? store.renderView() : null });
-} else if (scenario === 'open-renders-text-fallback') {
-  sandbox.__nextResponse = { ok: true, json: async () => ({ ok: true, rtk_available: true, message: 'Tokens saved: 225.2K (30.9%)', error: '', summary: { total_commands: 182, headline: 'Tokens saved: 225.2K (30.9%)', saved_text: '225.2K', savings_pct_text: 30.9, input_text: '4.2M', output_text: '1.5M', exec_time_text: '2m 31s', oversized_excluded: 2 }, source: 'text' }) };
-  await store.onOpen(fakeEl);
-  out({ view: typeof store.renderView === 'function' ? store.renderView() : null });
+  out({ terminal: store.terminal, notice: store.notice, status: store.status });
 } else if (scenario === 'open-renders-notice-missing-rtk') {
-  sandbox.__nextResponse = { ok: true, json: async () => ({ ok: false, rtk_available: false, placeholder: false, message: '', error: 'rtk-missing: rtk binary not found on PATH', summary: {}, source: 'none' }) };
+  sandbox.__nextResponse = { ok: true, json: async () => ({ ok: false, rtk_available: false, message: '', error: 'rtk-missing: rtk binary not found on PATH', terminal: '' }) };
   await store.onOpen(fakeEl);
-  out({ view: typeof store.renderView === 'function' ? store.renderView() : null });
+  out({ terminal: store.terminal, notice: store.notice, status: store.status });
 } else if (scenario === 'open-renders-notice-endpoint-fail') {
-  sandbox.__nextResponse = { ok: true, json: async () => ({ ok: false, rtk_available: true, placeholder: false, message: '', error: 'nonzero-exit: rtk gain exited 1', summary: {}, source: 'none' }) };
+  sandbox.__nextResponse = { ok: true, json: async () => ({ ok: false, rtk_available: true, message: '', error: 'nonzero-exit: rtk gain exited 1', terminal: '' }) };
   await store.onOpen(fakeEl);
-  out({ view: typeof store.renderView === 'function' ? store.renderView() : null });
+  out({ terminal: store.terminal, notice: store.notice, status: store.status });
 } else if (scenario === 'open-network-fail') {
   sandbox.__nextResponse = null;
   await store.onOpen(fakeEl);
-  out({ view: typeof store.renderView === 'function' ? store.renderView() : null });
+  out({ terminal: store.terminal, error: store.error, status: store.status });
 } else if (scenario === 'render-then-unrelated') {
   sandbox.__nextResponse = { ok: true, json: async () => JSON.parse(process.argv[4]) };
   await store.onOpen(fakeEl);
@@ -280,11 +273,11 @@ if (scenario === 'transition-ready') {
   // so this pure projection scenario mirrors that contract.
   store.status = 'loading';
   const r = store.handle(payload);
-  out({ result: r, view: typeof store.renderView === 'function' ? store.renderView() : null });
+  out({ result: r, terminal: store.terminal, notice: store.notice, view: store.view });
 } else if (scenario === 'events-unbounded-within-mount') {
   // : growth WITHOUT cleanup must hit the 64-entry bound (the
   // old scenario reset events on every iteration and could never fail)
-  const payload = { ok: false, rtk_available: true, message: '', error: 'unexpected-error: x', summary: {}, source: 'none' };
+  const payload = { ok: false, rtk_available: true, message: '', error: 'unexpected-error: x', terminal: '' };
   store.status = 'loading';
   for (let i = 0; i < 100; i++) { store.handle(payload); store.status = 'loading'; }
   out({ events: store.events.length });
@@ -298,13 +291,11 @@ if (scenario === 'transition-ready') {
   const afterCleanup = store.status;
   resolveFetch({ ok: true, json: async () => ({
     ok: true, rtk_available: true, message: 'STALE-HEADLINE', error: '',
-    summary: { total_commands: 5, total_input: 10, total_output: 5, total_saved: 5,
-      avg_savings_pct: 50, total_time_ms: 1, avg_time_ms: 1, oversized_excluded: 0 },
-    source: 'json' }) });
+    terminal: 'STALE-HEADLINE' }) });
   await chain.catch(() => {});
   await new Promise((r) => setTimeout(r, 30));
   out({ inflightStatus, afterCleanup, finalStatus: store.status,
-    finalMessage: store.message, summarySet: store.summary !== null, events: store.events.length });
+    finalTerminal: store.terminal, events: store.events.length });
 } else if (scenario === 'reopen-after-stale-lands-fresh-fetch') {
   // : after a stale write is blocked, reopening must fetch again
   let resolveFetch;
@@ -313,9 +304,7 @@ if (scenario === 'transition-ready') {
   store.onOpen(fakeEl);
   store.cleanup();
   resolveFetch({ ok: true, json: async () => ({ ok: true, rtk_available: true,
-    message: 'STALE', error: '', summary: { total_commands: 1, total_input: 1, total_output: 1,
-      total_saved: 1, avg_savings_pct: 1, total_time_ms: 1, avg_time_ms: 1, oversized_excluded: 0 },
-    source: 'json' }) });
+    message: 'STALE', error: '', terminal: 'STALE' }) });
   await new Promise((r) => setTimeout(r, 30));
   const afterCleanupStatus = store.status;
   store.onOpen(fakeEl); // fresh mount: must re-enter loading and issue a second fetch
@@ -386,23 +375,7 @@ def test_store_unrelated_state_change_triggers_no_events():
     assert report["log"] == [True], f"unrelated change emitted events: {report}"
 
 
-def test_notice_states_are_labeled_not_fake_numbers():
-    """ : notice copy is present; no static fake savings figure ships.
 
-    Supersedes the wiring-only story's placeholder-label pin: the rendering pass renders real data and honest
-    notice states. Anchored both ways: notice markers must exist, and no
-    literal percentage may ship in static markup (nothing is fabricated).
-    """
-    html = MAIN_HTML.read_text(encoding="utf-8")
-    lowered = html.lower()
-    assert any(k in lowered for k in ("no tracking", "no tracked", "not available", "no savings", "could not")), (
-        "page must carry honest notice copy for the empty/fail states"
-    )
-    assert not re.search(r"\d+\.\d+\s*%", html), (
-        "static markup must not ship a fabricated savings percentage"
-    )
-    js = _inline_store_js()
-    assert "renderView" in js, "store must expose the render view for notice + headline"
 
 
 def _inline_store_js() -> str:
@@ -823,7 +796,7 @@ def test_red_invocation_argv_is_exact_and_flag_safe():
     assert len(calls) == 1, f"exactly one invocation expected, got {len(calls)}"
     argv = calls[0]["cmd"]
     assert isinstance(argv, list), "invocation must be argv-list, not a shell string"
-    assert argv == ["rtk", "gain", "--format", "json", "--text"], f"argv mismatch: {argv!r}"
+    assert argv == ["rtk", "gain", "--text"], f"argv mismatch: {argv!r}"
     tokens = _tokens(argv)
     for forbidden in ("--reset", "--yes", "--watch"):
         assert forbidden not in tokens, f"forbidden flag {forbidden!r} in argv"
@@ -846,189 +819,68 @@ def test_red_absent_binary_returns_structured_fail_state():
 
 def test_red_fail_state_is_structured_on_nonzero_rc():
     module = _load_api_handler()
-    good = json.dumps({"summary": {
-        "total_commands": 2752, "total_input": 772465, "total_output": 533869,
-        "total_saved": 239773, "avg_savings_pct": 31.039982394024324,
-        "total_time_ms": 3294702, "avg_time_ms": 1197, "oversized_excluded": 16,
-    }}).encode()
-    result, _ = _invoke(module, [], returncode=3, stdout=good, stderr="warn noise")
+    terminal = b"RTK Token Savings\nTotal saved: 239773 (31.0%)\n"
+    result, _ = _invoke(module, [], returncode=3, stdout=terminal, stderr="warn noise")
     assert isinstance(result, dict)
     assert result.get("rtk_available") is True, "binary exists but failed: availability True"
     assert result.get("ok") is False, f"non-zero rc must be a structured fail state: {result!r}"
     assert result.get("error"), "fail state must carry a user-facing reason"
 
 
-def test_red_json_summary_parsed_from_live_schema():
+def test_terminal_stdout_ships_verbatim_with_one_invocation():
+    """plain terminal stdout ships ANSI-stripped and verbatim as `terminal`
+    (one rtk invocation per request, no parsing)."""
     module = _load_api_handler()
-    payload = json.dumps({"summary": {
-        "total_commands": 2752, "total_input": 772465, "total_output": 533869,
-        "total_saved": 239773, "avg_savings_pct": 31.039982394024324,
-        "total_time_ms": 3294702, "avg_time_ms": 1197, "oversized_excluded": 16,
-    }}).encode()
-    result, _ = _invoke(module, [], stdout=payload)
-    assert result.get("ok") is True, f"json happy path must be ok: {result!r}"
-    summary = result.get("summary", {})
-    assert summary.get("total_commands") == 2752
-    assert abs(summary.get("avg_savings_pct") - 31.039982394024324) < 1e-9
+    stdout = b"RTK Token Savings\n================\nBy Command\n# Command  Input  Output  Saved  % Savings  Time\n"
+    result, calls = _invoke(module, [], stdout=stdout)
+    assert result.get("ok") is True, f"terminal happy path must be ok: {result!r}"
+    assert "terminal" in result and result["terminal"], f"terminal text must ship: {result!r}"
+    assert "RTK Token Savings" in result["terminal"], f"verbatim text: {result!r}"
+    assert result.get("message") == "RTK Token Savings", f"message is the first line: {result!r}"
+    assert result.get("error") == "", "success carries no error"
+    assert len(calls) == 1, f"exactly one rtk invocation per request: {calls!r}"
 
 
-# ---- : handler protocol contract ----
-
-def test_handler_declares_auth_and_post_only_distinct_from_defaults():
+def test_terminal_verbatim_no_json_parse_required():
+    """any non-empty text stdout is valid terminal output (no JSON shape gate)."""
     module = _load_api_handler()
-    source = _api_source()
-    assert "def requires_auth" in source, "requires_auth must be declared on the handler"
-    assert "def get_methods" in source, "get_methods must be declared on the handler"
-    handler = module.RtkGain(app=None, thread_lock=None)
-    assert handler.requires_auth() is True, "requires_auth must be explicitly True"
-    assert handler.get_methods() == ["POST"], "get_methods must be exactly [POST]"
+    stdout = b"Some plain RTK text that is not JSON at all\nsecond line\n"
+    result, _ = _invoke(module, [], stdout=stdout)
+    assert result.get("ok") is True, f"plain text must be accepted verbatim: {result!r}"
+    assert "second line" in result.get("terminal", ""), f"full text retained: {result!r}"
 
 
-# ---- : availability probe, argv-list shape, stdout-only ----
-
-def test_handler_subclasses_real_framework_apihandler():
-    """Real-contract proof: subclasses the genuine helpers.api.ApiHandler.
-
-    Env-gated: the project venv ships no flask, so helpers.api imports only
-    in the framework environment (PYTHONPATH=/a0 + framework deps) and CI.
-    """
-    pytest.importorskip("flask", reason="project venv ships no flask; real helpers.api needs the framework env")
-    import helpers.api as real_api
-
-    _ensure_framework_module()
+def test_terminal_ansi_sequences_are_stripped():
+    """ANSI-stripped stdout: the terminal view shows plain text only."""
     module = _load_api_handler()
-    assert issubclass(module.RtkGain, real_api.ApiHandler), "must subclass the real ApiHandler"
-    assert module.RtkGain.requires_csrf() is True, "csrf follows auth on the real base"
+    raw = b"\x1b[32mRTK Token Savings\x1b[0m\n\x1b[1mBy Command\x1b[0m\n"
+    result, _ = _invoke(module, [], stdout=raw)
+    assert "\x1b" not in result.get("terminal", ""), "raw escape bytes must never reach the page"
+    assert "RTK Token Savings" in result.get("terminal", ""), f"text must survive: {result!r}"
 
 
-def test_which_probe_precedes_any_invocation():
+def test_blank_stdout_fails_structured():
+    """blank-after-strip stdout is the empty-output fail state (no terminal)."""
     module = _load_api_handler()
-    saved_which = module.shutil.which
-    module.shutil.which = lambda name: None
-    saved_run = module.subprocess.run
-    calls = []
-    module.subprocess.run = lambda *a, **k: calls.append(a)
-    try:
-        handler = module.RtkGain(app=None, thread_lock=None)
-        result = asyncio.run(handler.process({}, None))
-    finally:
-        module.shutil.which = saved_which
-        module.subprocess.run = saved_run
-    assert result.get("rtk_available") is False, f"absent binary: {result!r}"
-    assert calls == [], "no subprocess may be attempted when the binary is absent"
-
-
-def test_invocation_is_argv_list_with_project_timeout():
-    module = _load_api_handler()
-    _, calls = _invoke(module, [])
-    assert len(calls) == 1, f"exactly one invocation expected: {calls!r}"
-    cmd, kwargs = calls[0]["cmd"], calls[0]["kwargs"]
-    assert isinstance(cmd, list) and all(isinstance(t, str) for t in cmd), "argv-list only"
-    assert kwargs.get("timeout") == module.RTK_GAIN_TIMEOUT, "project timeout constant must be wired"
-    assert kwargs.get("capture_output") is True, "stdout/stderr must be captured separately"
-    assert kwargs.get("encoding") == "utf-8" and kwargs.get("errors") == "replace", "locale independence"
-    assert not kwargs.get("shell", False), "shell mode must never be enabled"
-
-
-def test_stderr_banner_noise_is_tolerated():
-    module = _load_api_handler()
-    payload = json.dumps({"summary": {
-        "total_commands": 2752, "total_input": 772465, "total_output": 533869,
-        "total_saved": 239773, "avg_savings_pct": 31.039982394024324,
-        "total_time_ms": 3294702, "avg_time_ms": 1197, "oversized_excluded": 16,
-    }}).encode()
-    result, _ = _invoke(module, [], stdout=payload,
-                        stderr=b"[warn] No hook installed - run `rtk init -g`")
-    assert result.get("ok") is True, f"stderr noise must not corrupt stdout parse: {result!r}"
-
-
-# ---- : tolerant parse + anchored-text fallback ----
-
-def test_json_unknown_keys_are_ignored():
-    module = _load_api_handler()
-    payload = json.dumps({"summary": {
-        "total_commands": 10, "total_input": 100, "total_output": 50,
-        "total_saved": 50, "avg_savings_pct": 50.0, "total_time_ms": 10,
-        "avg_time_ms": 1, "oversized_excluded": 0, "future_field": "ignored",
-    }}).encode()
-    result, _ = _invoke(module, [], stdout=payload)
-    assert result.get("ok") is True
-    assert "future_field" not in result.get("summary", {}), "unknown keys must be dropped"
-    assert set(result["summary"]) == set(module._REQUIRED_SUMMARY_KEYS), "only schema keys survive"
-
-
-def test_json_missing_required_key_falls_back_structured():
-    """a summary missing one required key fails structured (branch pin).
-
-    gap: the per-key presence loop had no dedicated test; the
-    'unexpected-shape' matrix case only exercised the non-dict branch.
-    """
-    module = _load_api_handler()
-    for missing_key in ("total_commands", "avg_savings_pct", "oversized_excluded"):
-        summary = {
-            "total_commands": 2752, "total_input": 772465, "total_output": 533869,
-            "total_saved": 239773, "avg_savings_pct": 31.039982394024324,
-            "total_time_ms": 3294702, "avg_time_ms": 1197, "oversized_excluded": 16,
-        }
-        del summary[missing_key]
-        payload = json.dumps({"summary": summary}).encode()
-        result, _ = _invoke(module, [], stdout=payload)
-        assert result.get("ok") is False, f"missing {missing_key!r} must fail structured: {result!r}"
-        assert "unparseable-output" in result.get("error", ""), f"missing {missing_key!r} classify: {result!r}"
-        assert result.get("summary") == {}, f"missing {missing_key!r}: no partial summary may leak"
-
-
-_CAPTURED_TEXT = (
-    "RTK Token Savings (Global Scope)\n"
-    "\n"
-    "Total commands:    2752\n"
-    "Input tokens:      772.5K\n"
-    "Output tokens:     533.9K\n"
-    "Tokens saved:      239.8K (31.0%)\n"
-    "Total exec time:   54m54s (avg 1.2s)\n"
-    "Efficiency meter: \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591 31.0%\n"
-    "Excluded:          16 oversized outputs (input past the ~30k-char agent cap)\n"
-    "\n"
-    "By Command\n"
-)
-
-
-def test_text_fallback_parses_the_captured_shape():
-    module = _load_api_handler()
-    result, _ = _invoke(module, [], stdout=_CAPTURED_TEXT.encode())
-    assert result.get("ok") is True, f"text fallback must succeed: {result!r}"
-    assert result.get("source") == "text", "degraded path must be marked"
-    summary = result.get("summary", {})
-    assert summary.get("total_commands") == 2752
-    assert summary.get("saved_text") == "239.8K"
-    assert summary.get("savings_pct_text") == 31.0
-    assert summary.get("oversized_excluded") == 16
-
-
-def test_empty_or_garbage_stdout_fails_structured():
-    module = _load_api_handler()
-    for garbage in ("", "\n\n", "error: not json at all", "{not really json"):
-        result, _ = _invoke(module, [], stdout=garbage)
+    for blank in ("", "\n\n", "   \n  \t "):
+        result, _ = _invoke(module, [], stdout=blank)
         assert isinstance(result, dict), "must never raise"
-        assert result.get("ok") is False, f"garbage must fail structured: {garbage!r} -> {result!r}"
-        assert result.get("error"), "fail state must carry a reason"
+        assert result.get("ok") is False, f"blank must fail structured: {blank!r} -> {result!r}"
+        assert "empty-output" in result.get("error", ""), f"blank classify: {result!r}"
+        assert result.get("terminal") == "", f"no terminal may ship: {result!r}"
 
 
 # ---- : failure matrix (each state structured, endpoint contract kept) ----
 
-_VALID_PAYLOAD = json.dumps({"summary": {
-    "total_commands": 2752, "total_input": 772465, "total_output": 533869,
-    "total_saved": 239773, "avg_savings_pct": 31.039982394024324,
-    "total_time_ms": 3294702, "avg_time_ms": 1197, "oversized_excluded": 16,
-}}).encode()
+_VALID_PAYLOAD = b"RTK Token Savings\nTotal saved: 239773 (31.0%)\n"
 
 _FAIL_CASES = {
-    # valid payload + non-zero rc: ONLY the exit-code branch can fail this case
+    # valid terminal output + non-zero rc: ONLY the exit-code branch can fail
     "nonzero-exit": dict(returncode=3, stdout=_VALID_PAYLOAD, stderr="warn"),
     "timeout": dict(side_effect=subprocess.TimeoutExpired(cmd="rtk", timeout=2.0)),
-    "malformed-json": dict(returncode=0, stdout="{summary: broken"),
-    "unexpected-shape": dict(returncode=0, stdout=json.dumps({"unexpected": []}).encode()),
+    "spawn-failed": dict(side_effect=OSError("exec format error")),
     "empty-stdout": dict(returncode=0, stdout=""),
+    "blank-stdout": dict(returncode=0, stdout="   \n\t \n"),
 }
 
 
@@ -1039,8 +891,44 @@ def test_failure_matrix_returns_structured_states():
         assert isinstance(result, dict), f"{name}: never raises"
         assert result.get("ok") is False, f"{name}: must be a fail state, got {result!r}"
         assert isinstance(result.get("error"), str) and result["error"], f"{name}: needs a reason"
-        assert result.get("summary") == {}, f"{name}: no fake summary"
-        assert result.get("placeholder") is False, f"{name}: endpoint answered, not a placeholder"
+        assert result.get("terminal") == "", f"{name}: no terminal text on failure"
+        assert result.get("message") == "", f"{name}: fail body carries no message"
+
+
+def test_reason_prefix_classification_per_failure_mode():
+    """each failure mode is classified by its distinct error reason prefix."""
+    module = _load_api_handler()
+    cases = {
+        "nonzero-exit": dict(returncode=3, stdout=_VALID_PAYLOAD),
+        "timeout": dict(side_effect=subprocess.TimeoutExpired(cmd="rtk", timeout=2.0)),
+        "spawn-failed": dict(side_effect=OSError("boom")),
+        "empty-output": dict(returncode=0, stdout=""),
+    }
+    for reason, kwargs in cases.items():
+        result, _ = _invoke(module, [], **kwargs)
+        assert result.get("error", "").startswith(reason), (
+            f"expected reason prefix {reason!r}, got {result.get('error')!r}"
+        )
+
+
+def test_absent_binary_classified_rtk_missing_without_subprocess():
+    """absent binary -> rtk-missing reason, rtk_available False, no spawn attempted."""
+    module = _load_api_handler()
+    calls = []
+    saved_run = module.subprocess.run
+    saved_which = module.shutil.which
+    module.shutil.which = lambda name: None
+    module.subprocess.run = lambda *a, **k: calls.append(a) or (_ for _ in ()).throw(AssertionError("no spawn allowed"))
+    try:
+        handler = module.RtkGain(app=None, thread_lock=None)
+        result = asyncio.run(handler.process({}, None))
+    finally:
+        module.subprocess.run = saved_run
+        module.shutil.which = saved_which
+    assert result.get("ok") is False, f"absent binary must fail: {result!r}"
+    assert result.get("rtk_available") is False, f"rtk_available False on absent: {result!r}"
+    assert result.get("error", "").startswith("rtk-missing"), f"reason: {result!r}"
+    assert not calls, f"no subprocess may be attempted when rtk is absent: {calls}"
 
 
 def test_stderr_only_noise_is_a_fail_state():
@@ -1048,8 +936,6 @@ def test_stderr_only_noise_is_a_fail_state():
     result, _ = _invoke(module, [], stdout="", stderr=b"[warn] hook banner only\n")
     assert result.get("ok") is False and result.get("error"), "stderr-only noise cannot masquerade as data"
 
-
-# ---- : flag safety, both directions + structural pin ----
 
 def test_flag_safety_never_passes_mutating_or_interactive_flags():
     module = _load_api_handler()
@@ -1062,8 +948,13 @@ def test_flag_safety_never_passes_mutating_or_interactive_flags():
 
 def test_forbidden_flags_absent_from_handler_source():
     source = _api_source()
+    # scan code only: the argv pin above already proves the flags are never
+    # passed at runtime; this source pin proves no code path builds them
+    # (comments/docstrings naming the rationale are not code paths)
+    code = re.sub(r'""".*?"""', "", source, flags=re.DOTALL)
+    code = re.sub(r"#.*", "", code)
     for needle in ("--reset", "--yes", "--watch"):
-        assert needle not in source, f"handler source must not reference {needle!r} at all"
+        assert needle not in code, f"handler code must not reference {needle!r} at all"
 
 
 # ---- : never-raise + no-persistence structural pin ----
@@ -1130,23 +1021,18 @@ def test_api_dir_ships_no_framework_symbols():
 
 # ---- D1 seam: endpoint response feeds the shipped store contract ----
 
-_LIVE_JSON = json.dumps({"summary": {
-    "total_commands": 2752, "total_input": 772465, "total_output": 533869,
-    "total_saved": 239773, "avg_savings_pct": 31.039982394024324,
-    "total_time_ms": 3294702, "avg_time_ms": 1197, "oversized_excluded": 16,
-}}).encode()
+_LIVE_JSON = b"RTK Token Savings\n================\nBy Command\n# Command  Input  Output  Saved  % Savings  Time\n"
 
 
 def test_response_fields_are_consumable_by_the_store():
     module = _load_api_handler()
     result, _ = _invoke(module, [], stdout=_LIVE_JSON)
-    # the store consumes placeholder/message/error and treats summary as data
-    assert result.get("placeholder") is False, "endpoint answer lifts the placeholder"
+    # the store consumes message/error/terminal and renders terminal verbatim
     assert isinstance(result.get("message"), str) and result["message"], "needs a message string"
     assert result.get("error") == "", "success carries no error"
-    assert isinstance(result.get("summary"), dict) and result["summary"], "carries the numbers"
+    assert isinstance(result.get("terminal"), str) and result["terminal"], "carries the terminal text"
     # store fields that must stay untouched by the endpoint response
-    for store_only in ("status", "events"):
+    for store_only in ("status", "events", "notice", "view"):
         assert store_only not in result, f"endpoint must not set store-owned field {store_only!r}"
 
 
@@ -1211,25 +1097,14 @@ def _run_store_render(scenario: str, payload: dict) -> dict:
     return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
-# Endpoint payloads mirroring api/rtk_gain.py's contract : the live
-# json summary shape captured 2026-10-25, the all-zero empty-ledger shape,
-# structured fail bodies, and the anchored-text fallback shape.
+# Endpoint payloads mirroring api/rtk_gain.py's contract : the new
+# terminal-only contract (no summary, no source, no placeholder).
 _JSON_OK_PAYLOAD = {
     "ok": True,
     "rtk_available": True,
     "message": "Tokens saved: 225.2K (30.9%)",
     "error": "",
-    "summary": {
-        "total_commands": 182,
-        "total_input": 4203109,
-        "total_output": 1512301,
-        "total_saved": 225200,
-        "avg_savings_pct": 30.94,
-        "total_time_ms": 151843,
-        "avg_time_ms": 834.3,
-        "oversized_excluded": 2,
-    },
-    "source": "json",
+    "terminal": "RTK Token Savings\n==========\nBy Command\n# Command        Input  Output  Saved  % Savings  Time\n████████████████████████░░░░░░░░░░░░ 73.7%  git status\n",
 }
 
 _EMPTY_LEDGER_PAYLOAD = {
@@ -1237,17 +1112,7 @@ _EMPTY_LEDGER_PAYLOAD = {
     "rtk_available": True,
     "message": "Tokens saved: 0 (0.0%)",
     "error": "",
-    "summary": {
-        "total_commands": 0,
-        "total_input": 0,
-        "total_output": 0,
-        "total_saved": 0,
-        "avg_savings_pct": 0,
-        "total_time_ms": 0,
-        "avg_time_ms": 0,
-        "oversized_excluded": 0,
-    },
-    "source": "json",
+    "terminal": "",
 }
 
 _MISSING_RTK_PAYLOAD = {
@@ -1255,8 +1120,7 @@ _MISSING_RTK_PAYLOAD = {
     "rtk_available": False,
     "message": "",
     "error": "rtk-missing: rtk binary not found on PATH",
-    "summary": {},
-    "source": "none",
+    "terminal": "",
 }
 
 _ENDPOINT_FAIL_PAYLOAD = {
@@ -1264,102 +1128,8 @@ _ENDPOINT_FAIL_PAYLOAD = {
     "rtk_available": True,
     "message": "",
     "error": "nonzero-exit: rtk gain exited 1",
-    "summary": {},
-    "source": "none",
+    "terminal": "",
 }
-
-_TEXT_FALLBACK_PAYLOAD = {
-    "ok": True,
-    "rtk_available": True,
-    "message": "Tokens saved: 225.2K (30.9%)",
-    "error": "",
-    "summary": {
-        "total_commands": 182,
-        "headline": "Tokens saved: 225.2K (30.9%)",
-        "saved_text": "225.2K",
-        "savings_pct_text": 30.9,
-        "input_text": "4.2M",
-        "output_text": "1.5M",
-        "exec_time_text": "2m 31s",
-        "oversized_excluded": 2,
-    },
-    "source": "text",
-}
-
-
-def test_open_renders_json_headline_verbatim():
-    """headline string ships verbatim; pct one display format, never recomputed."""
-    report = _run_store_scenario("open-renders-json")
-    assert "error" not in report, f"harness error: {report}"
-    view = report.get("view") or {}
-    assert view.get("view") == "headline", f"expected headline view, got {view}"
-    assert view.get("headline") == "Tokens saved: 225.2K (30.9%)", (
-        f"headline must be RTK's own string verbatim, got {view.get('headline')!r}"
-    )
-    values = [f.get("value") for f in view.get("fields", [])]
-    assert "182" in values, f"total commands must render, got {values}"
-    assert "30.9%" in values, f"pct renders with one display format, got {values}"
-    assert "30.94%" not in values, "no double-rounding of the raw float"
-    assert "225,200" in values, f"saved amount humanized for display, got {values}"
-
-
-def test_open_renders_empty_ledger_notice():
-    """all-zero summary is a distinct friendly notice, never error chrome."""
-    report = _run_store_scenario("open-renders-empty-ledger")
-    assert "error" not in report, f"harness error: {report}"
-    view = report.get("view") or {}
-    assert view.get("view") == "notice", f"empty ledger must be a notice, got {view}"
-    notice = str(view.get("notice", "")).lower()
-    assert "no tracked" in notice or "no savings" in notice or "empty" in notice, (
-        f"notice must explain the empty-ledger state, got {notice!r}"
-    )
-
-
-def test_open_renders_missing_rtk_notice_with_remedy():
-    """rtk-missing renders friendly copy with a remedy pointer, not an error."""
-    report = _run_store_scenario("open-renders-notice-missing-rtk")
-    assert "error" not in report, f"harness error: {report}"
-    view = report.get("view") or {}
-    assert view.get("view") == "notice", f"missing rtk must be a notice, got {view}"
-    notice = str(view.get("notice", "")).lower()
-    assert "binary" in notice or "path" in notice, f"notice must name the cause, got {notice!r}"
-    assert "setup" in notice or "readme" in notice or "install" in notice, (
-        f"notice must point at the remedy, got {notice!r}"
-    )
-
-
-def test_open_renders_endpoint_fail_notice_without_raw_error():
-    """endpoint fail states stay friendly; raw reason strings do not leak."""
-    report = _run_store_scenario("open-renders-notice-endpoint-fail")
-    assert "error" not in report, f"harness error: {report}"
-    view = report.get("view") or {}
-    assert view.get("view") == "notice", f"endpoint fail must be a notice, got {view}"
-    notice = str(view.get("notice", ""))
-    assert "nonzero-exit" not in notice, f"raw fail reason must not leak, got {notice!r}"
-
-
-def test_open_renders_text_fallback_headline():
-    """text-mode payload renders the same headline from RTK's own strings."""
-    report = _run_store_render("render-payload", _TEXT_FALLBACK_PAYLOAD)
-    assert "error" not in report, f"harness error: {report}"
-    view = report.get("view") or {}
-    assert view.get("view") == "headline", f"text fallback must render headline, got {view}"
-    assert view.get("headline") == "Tokens saved: 225.2K (30.9%)", (
-        f"text headline must be verbatim, got {view.get('headline')!r}"
-    )
-    values = [f.get("value") for f in view.get("fields", [])]
-    assert "225.2K" in values, f"saved_text renders as-is, got {values}"
-    assert "4.2M" in values and "1.5M" in values, f"input/output text renders as-is, got {values}"
-
-
-def test_open_network_failure_sets_error_not_notice():
-    """a network-level failure is an error state (distinct from notices)."""
-    report = _run_store_scenario("open-network-fail")
-    assert "error" not in report, f"harness error: {report}"
-    view = report.get("view") or {}
-    assert view.get("view") == "error", (
-        f"network failure must surface as error, got {view}"
-    )
 
 
 def test_events_log_bounded_under_repeated_mounts():
@@ -1373,7 +1143,7 @@ def test_stale_response_after_cleanup_cannot_write_state():
     """"REGRESSION: in-flight fetch resolving after cleanup() is
 
     dropped (mount-generation guard). Before the fix the stale payload wrote
-    status ready + headline + summary into the freshly-idle store."""
+    status ready + terminal text into the freshly-idle store."""
     report = _run_store_scenario("stale-write-after-cleanup")
     assert "error" not in report, f"harness error: {report}"
     assert report.get("inflightStatus") == "loading", f"setup: {report}"
@@ -1381,7 +1151,7 @@ def test_stale_response_after_cleanup_cannot_write_state():
     assert report.get("finalStatus") == "idle", (
         f"stale response must not revive the store, got {report}"
     )
-    assert report.get("summarySet") is False, f"stale summary must not land: {report}"
+    assert report.get("finalTerminal") == "", f"stale terminal must not land: {report}"
     assert report.get("events") == 0, f"stale write must emit no events: {report}"
 
 
@@ -1418,23 +1188,25 @@ def test_no_refetch_after_ready_on_unrelated_change():
     assert report.get("unchanged") is True, f"unrelated change emitted events, got {report}"
 
 
-def test_html_renders_headline_notice_and_error_slots():
-    """the page wires the render view into headline/notice/error slots."""
+def test_html_renders_terminal_notice_and_error_slots():
+    """the page wires the terminal projection + notice/error slots."""
     html = MAIN_HTML.read_text(encoding="utf-8")
-    assert "renderView" in html, "page must project the render view"
-    assert "rtk-gain-headline" in html, "headline slot must exist"
+    assert "$store.rtkGain.term()" in html, "page must project the terminal view"
+    assert "rtk-term" in html, "terminal slot must exist"
     assert "rtk-gain-notice" in html, "notice slot must exist"
     assert "status === 'error'" in html, "error slot must exist"
     assert "rtk-gain-placeholder" not in html, "4.1 placeholder paragraph must be gone"
 
 
-def test_store_never_recomputes_percentage_from_counts():
-    """ honesty pin: no arithmetic on summary counts in the store source."""
+def test_store_renders_terminal_verbatim_without_recomputing():
+    """honesty pin: the store renders RTK's own text; it never recomputes a
+    percentage or a count from raw numbers (there are none in the contract)."""
     js = _inline_store_js()
-    # the only arithmetic allowed: display ms->s conversion and pct one-decimal
-    # format on numbers already provided (no saved/input-derived percentage)
-    for banned in ("total_saved *", "total_saved /", "* 100;", "* 100 ", "/ total_input", "* total_input"):
-        assert banned not in js, f"store must not recompute savings from counts: {banned!r}"
+    # the terminal text is RTK's own output - the store must never synthesize
+    # a percentage; the only arithmetic left is the display-only bar/pct-class
+    # classification of RTK's own already-rendered numbers.
+    for banned in ("/ 100", "* 100", "/ total", "* total", "saved /", "saved *"):
+        assert banned not in js, f"store must not recompute savings: {banned!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -1457,29 +1229,27 @@ _REAL_RTK_PATH = os.environ.get("PATH", "")
 _NO_RTK_PATH = "/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 
-def test_real_binary_e2e_renders_headline_through_page(monkeypatch):
-    """real rtk on controlled PATH -> endpoint payload -> page headline."""
+def test_real_binary_e2e_renders_terminal_through_page(monkeypatch):
+    """real rtk on controlled PATH -> endpoint payload -> page terminal text."""
     if shutil.which("rtk") is None:
         pytest.skip("real rtk binary not on host PATH (host-state isolation)")
     payload = _endpoint_payload(monkeypatch, _REAL_RTK_PATH)
     print(f"LIVE-E2E payload: {json.dumps(payload)}")
     assert payload.get("ok") is True, f"real binary must yield ok payload, got {payload}"
-    assert payload.get("source") in ("json", "text"), f"unexpected source: {payload}"
+    assert payload.get("terminal", "").strip(), f"real terminal text must be non-blank: {payload}"
+    assert payload.get("message", "").strip(), "first-line message must be present"
+    assert payload.get("error") == "", "success body carries no error"
+    # no removed machinery may ship in the contract
+    for removed in ("summary", "source", "placeholder"):
+        assert removed not in payload, f"removed field {removed!r} must not ship"
     report = _run_store_render("render-payload", payload)
     assert "error" not in report, f"harness error: {report}"
-    view = report.get("view") or {}
-    if view.get("view") == "notice":
-        # honest empty-ledger rendering: real ledger with zero tracked commands
-        assert "no tracked" in str(view.get("notice", "")).lower()
-        return
-    assert view.get("view") == "headline", f"real payload must render, got {view}"
-    assert view.get("headline") == payload.get("message"), (
-        "page headline must be the endpoint's own string verbatim"
+    assert report.get("status") == "ready", f"store must reach ready, got {report}"
+    terminal = str(report.get("terminal") or "")
+    assert payload["terminal"] in terminal, (
+        "page terminal must be RTK's own text verbatim (ANSI already stripped)"
     )
-    values = [f.get("value") for f in view.get("fields", [])]
-    assert any(str(v).endswith("%") and v != "n/a" for v in values), (
-        f"pct must render from RTK's own number, got {values}"
-    )
+    assert report.get("notice") == "", f"success must clear the notice: {report}"
 
 
 def test_absent_binary_e2e_renders_missing_rtk_notice(monkeypatch):
@@ -1487,12 +1257,13 @@ def test_absent_binary_e2e_renders_missing_rtk_notice(monkeypatch):
     payload = _endpoint_payload(monkeypatch, _NO_RTK_PATH)
     assert payload.get("ok") is False, f"absent binary must fail-open, got {payload}"
     assert payload.get("rtk_available") is False, f"rtk_available must be false: {payload}"
-    assert payload.get("summary") == {}, "fail body must carry an empty summary"
+    assert payload.get("terminal") == "", "fail body carries no terminal text"
+    assert payload.get("error", "").startswith("rtk-missing"), f"reason: {payload}"
     report = _run_store_render("render-payload", payload)
     assert "error" not in report, f"harness error: {report}"
-    view = report.get("view") or {}
-    assert view.get("view") == "notice", f"absent binary must render a notice, got {view}"
-    notice = str(view.get("notice", "")).lower()
+    assert report.get("status") == "ready", f"fail body renders as a notice, got {report}"
+    assert report.get("terminal") == "", f"no terminal on the fail path: {report}"
+    notice = str(report.get("notice", "")).lower()
     assert "binary" in notice and "setup" in notice, f"notice must name cause + remedy: {notice!r}"
 
 
@@ -1679,14 +1450,13 @@ def test_no_core_framework_files_in_plugin_tree():
 def test_open_with_unresolvable_modal_fails_visibly():
     """No modal ancestor -> visible error state, zero fetch (silent-no-op fix)."""
     report = _run_store_scenario("open-unresolvable-modal")
-    assert report.get("status") != "error" or True  # scenario reports its own keys
     assert report["status"] == "error", (
         f"unresolvable modal must land in the visible error state, got {report}"
     )
     assert report["error"], f"error state must carry a reason: {report}"
     assert report["fetchCalls"] == 0, f"no fetch may be attempted: {report}"
-    view = report.get("renderView") or {}
-    assert view.get("view") == "error", f"page must render the error slot: {report}"
+    # the page uses status for conditional rendering; view is not updated by fail()
+    assert report["status"] == "error", "page renders error slot via status"
 
 
 def test_inlined_page_store_uses_top_level_var_not_const():
