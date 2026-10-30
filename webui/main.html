@@ -62,8 +62,25 @@
 // (_whats_new, _kokoro_tts) use module scripts instead; this shell keeps the
 // classic-script shape its node test harness drives.
 
-// Single-source projection endpoint (POST, auth-gated, read-only; see api/).
-var RTK_GAIN_ENDPOINT = "/api/plugins/rtk_a0/rtk_gain";
+// Bounded lifecycle log: repeated open/destroy mounts must not grow it forever
+// (events[] discipline). 64 entries is far beyond any diagnostic need.
+// The POST target of the savings endpoint is derived from this page's own
+// modal path (the framework stamps every modal element with a data-modal-path
+// attribute holding its route). No plugin directory name is baked into this
+// document, so one shipped page serves every installed directory name.
+function rtkGainEndpointForModalPath(modalPath) {
+  const match = /^\/plugins\/([^/]+)\//.exec(String(modalPath || ""));
+  if (!match) return "";
+  return "/api/plugins/" + match[1] + "/rtk_gain";
+}
+
+function rtkGainEndpointFromElement($el) {
+  const modal = $el && typeof $el.closest === "function"
+    ? $el.closest(".modal[data-modal-path]")
+    : null;
+  if (!modal) return "";
+  return rtkGainEndpointForModalPath(modal.dataset && modal.dataset.modalPath);
+}
 
 // Bounded lifecycle log: repeated open/destroy mounts must not grow it forever
 // (events[] discipline). 64 entries is far beyond any diagnostic need.
@@ -293,9 +310,13 @@ var createRtkGainStore = () => ({
 globalThis.createRtkGainStore = createRtkGainStore;
 
 var _rtkGainStore = createRtkGainStore();
+// Registration: register now when Alpine already exists (browser main-document
+// or node harness), otherwise wait for alpine:init. The listener branch is
+// guarded because the store file also runs inside a plain node vm sandbox,
+// where no document exists - registering there must not throw.
 if (typeof Alpine !== "undefined" && Alpine.store) {
   Alpine.store("rtkGain", _rtkGainStore);
-} else {
+} else if (typeof document !== "undefined" && document.addEventListener) {
   document.addEventListener("alpine:init", () => Alpine.store("rtkGain", _rtkGainStore));
 }
 </script>
