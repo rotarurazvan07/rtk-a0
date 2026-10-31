@@ -19,44 +19,32 @@ class RtkIntercept(Extension):
     """
 
     def execute(self, tool_name: str = "", tool_args: dict | None = None, **kwargs) -> None:
-        # Only code_execution_tool is eligible; exact equality, no
-        # prefix/fuzzy matching on tool names.
+        # Guard 1: tool identity
         if tool_name != "code_execution_tool":
             return
 
-        if not isinstance(tool_args, dict):
-            return
-
-        # Only the terminal runtime is eligible; python/nodejs/other
-        # payloads pass through untouched.
-        if tool_args.get("runtime") != "terminal":
+        # Guard 2: terminal runtime
+        if not isinstance(tool_args, dict) or tool_args.get("runtime") != "terminal":
             return
 
         code = tool_args.get("code")
 
-        # Payload must be a non-empty string.
+        # Guard 3: payload sanity
         if not isinstance(code, str) or not code.strip():
             return
 
-        # Idempotence: commands already routed through rtk (`rtk rewrite`,
-        # `rtk bypass`, `rtk gain`, ...) are never re-intercepted and cost
-        # zero subprocess calls.
+        # Guard 4: idempotence
         if code.lstrip().startswith("rtk "):
             return
 
-        # Availability pre-check: a missing binary skips delegation
-        # entirely. The first miss per session warns the user once via the
-        # agent data latch; self.agent absent (test/headless context) degrades
-        # silently. The original command always runs.
+        # Availability pre-check with once-per-session warning
         if not shutil.which("rtk"):
             if self.agent and not self.agent.data.get(RTK_MISSING_WARNED):
                 self.agent.data[RTK_MISSING_WARNED] = True
                 self._warn_unavailable()
             return
 
-        # Delegate to `rtk rewrite` via an argv-list subprocess: never shell
-        # mode (injection); timeout is the module constant; explicit utf-8
-        # codec keeps decoding locale-independent on the musl target.
+        # Delegate to `rtk rewrite` via argv-list subprocess
         try:
             result = subprocess.run(
                 ["rtk", "rewrite", code],
@@ -66,47 +54,25 @@ class RtkIntercept(Extension):
                 timeout=RTK_REWRITE_TIMEOUT,
             )
         except Exception:
-            # TimeoutExpired (a hung binary stalls at most one command) and
-            # every spawn fault (OSError, e.g. oversized argv): the original
-            # command runs unchanged, no crash.
+            # TimeoutExpired and every spawn fault (OSError, oversized argv):
+            # original command runs unchanged, no crash.
             return
 
-        # rc 0 (rules cover everything) and rc 3 (rtk printed a rewrite but
-        # its allow rules do not cover every command - real rtk 1.0.1
-        # default-container behavior) are rewrite-available. rc 1 (no
-        # rewrite), rc 2 (deny), and every other non-zero rc execute the
-        # command exactly as written. Permission approval of an applied
-        # rewrite remains the host tool-permission layer's responsibility.
+        # Structural pin: result gate must accept exactly rc 0 and 3
         if result.returncode not in (0, 3):
             return
 
-        # An empty or stdout-identical reply means rtk decided no
-        # compression is needed; compare on equal footing (the original is
-        # normalized the same way).
         rewritten = result.stdout.strip()
         if not rewritten or rewritten == code.strip():
             return
 
-        # One-time advisory notice on the first applied rewrite, pointing
-        # the user at `rtk gain` for savings visibility. Advisory only:
-        # latch-guarded, never re-ordered ahead of any guard, never blocks
-        # the mutation. `rtk gain` is not invoked by the plugin.
+        # Single-source latch with exactly one call site adjacent to mutation
         if self.agent and not self.agent.data.get(RTK_GAIN_HINTED):
             self.agent.data[RTK_GAIN_HINTED] = True
             self._hint_gain()
 
-        # The single mutation point in the entire plugin: only when rtk
-        # produced a different, non-empty command.
+        # The single mutation point in the entire plugin
         tool_args["code"] = rewritten
-
-    def _notify(self, kind: str, heading: str, content: str) -> None:
-        """One operator notice on the agent log surface; best-effort - a
-        broken surface can never break the agent (the action each notice
-        announces has already completed or already failed open)."""
-        try:
-            self.agent.context.log.log(type=kind, heading=heading, content=content)
-        except Exception:
-            pass
 
     def _warn_unavailable(self) -> None:
         """One-time 'compression inactive' notice after the latched miss."""
@@ -122,8 +88,7 @@ class RtkIntercept(Extension):
 
     def _hint_gain(self) -> None:
         """One-time advisory pointing the user at the rtk CLI's own savings
-        report (`rtk gain`) at the first applied rewrite. Discoverability
-        only: the plugin never invokes `rtk gain` itself."""
+        report (`rtk gain`) at the first applied rewrite."""
         self._notify(
             "info",
             "rtk compression active — view savings with `rtk gain`",
@@ -134,3 +99,11 @@ class RtkIntercept(Extension):
                 "command and needs no plugin settings."
             ),
         )
+
+    def _notify(self, kind: str, heading: str, content: str) -> None:
+        """One operator notice on the agent log surface; best-effort - a
+        broken surface can never break the agent."""
+        try:
+            self.agent.context.log.log(type=kind, heading=heading, content=content)
+        except Exception:
+            pass
