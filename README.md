@@ -21,7 +21,7 @@ git clone https://github.com/rotarurazvan07/rtk-a0.git usr/plugins/rtk_compressi
 
 ## How it works
 
-1. On install or update, `scripts/setup.sh` downloads the RTK release pinned in `rtk_pin.txt` (currently `v1.0.1`, static musl build), verifies its SHA-256 against the release `checksums.txt`, and installs it to `/usr/local/bin/rtk`.
+1. On install or update, `scripts/setup.sh` downloads the RTK release pinned in `rtk_pin.txt` (currently `v1.0.1`, static musl build), verifies its SHA-256 against the release `checksums.txt`, and installs it to `/usr/local/bin/rtk`. Host tools required: `bash`, `curl`, `tar`, `sha256sum`, `awk`, `mktemp`, and `find`.
 2. Before each terminal command runs, the plugin calls `rtk rewrite <command>`.
 3. If RTK returns a rewrite, that runs instead. Otherwise the original command runs.
 

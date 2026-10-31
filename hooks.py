@@ -35,7 +35,7 @@ _VERSION_TIMEOUT = 10
 _SETUP_LOCK = threading.RLock()
 
 
-class _Style:
+class _LogShim:
     """Minimal operator-visible logging (stderr; A0 surfaces hook output)."""
 
     @staticmethod
@@ -57,7 +57,7 @@ class _Style:
         self._emit("ERROR", *args)
 
 
-_style = _Style()
+_style = _LogShim()
 
 
 def _desc(exc: BaseException) -> str:
@@ -99,7 +99,7 @@ def _setup_env() -> dict[str, str]:
     return env
 
 
-def _run_setup():
+def _run_setup() -> subprocess.CompletedProcess[str]:
     with _SETUP_LOCK:
         return subprocess.run(
             ["bash", str(_SETUP_SCRIPT)],
@@ -116,7 +116,7 @@ def _run_setup():
         )
 
 
-def _setup_output(result) -> str:
+def _setup_output(result: subprocess.CompletedProcess[str]) -> str:
     """Combine setup output so the operator sees the provisioning verdict."""
     out = (result.stdout or "").strip()
     err = (result.stderr or "").strip()
