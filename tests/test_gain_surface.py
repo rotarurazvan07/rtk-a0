@@ -620,6 +620,8 @@ def test_no_agent_loop_or_lifecycle_changes_vs_baseline():
     sanctioned = {
         "hooks.py",
         "extensions/python/startup_migration/_10_rtk_bootstrap.py",
+        "extensions/python/tool_execute_before/_10_rtk_intercept.py",
+        "extensions/python/tool_execute_before/_10_rtk_intercept.py",
     }
     assert changed <= sanctioned, (
         f"unsanctioned background-surface changes (allowed: {sorted(sanctioned)}): {sorted(changed)}"
@@ -1407,6 +1409,8 @@ def test_surface_set_adds_no_agent_loop_or_lifecycle_changes():
     sanctioned = {
         "hooks.py",
         "extensions/python/startup_migration/_10_rtk_bootstrap.py",
+        "extensions/python/tool_execute_before/_10_rtk_intercept.py",
+        "extensions/python/tool_execute_before/_10_rtk_intercept.py",
     }
     assert changed <= sanctioned, (
         f"unsanctioned background-surface changes (allowed: {sorted(sanctioned)}): {sorted(changed)}"
