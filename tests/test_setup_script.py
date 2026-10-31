@@ -708,7 +708,7 @@ def test_staging_symlink_is_rejected(tmp_path):
 def test_real_version_output_format_no_v_prefix():
     """The real rtk 1.0.1 binary prints 'rtk 1.0.1' (no v). Byte-verified during against the actual release artifact (github.com/rtk-ai/rtk v1.0.1): `rtk --version` -> "rtk 1.0.1". The fixture stub must encode that exact shape or no test can catch a pin/version-format mismatch."""
     pin = PIN_FILE.read_text(encoding="utf-8").strip()
-    assert pin.startswith("v") and pin[1:] == "1.0.1", pin
+    assert pin.startswith("v") and pin[1:] == "1.1.0", pin
     src = SETUP.read_text(encoding="utf-8")
     # script derives the bare version token from the tag
     assert 'VERSION="${PIN#v}"' in src, "script must strip the tag's v for output matching"
@@ -797,7 +797,7 @@ def test_multi_rtk_archive_does_not_abort_under_pipefail(tmp_path):
     # flip=True: the idempotency probe first reports a non-matching version so
     # the install path (extract -> self-check) actually runs and the multi-rtk
     # extraction is exercised; afterwards the stub reports the real version.
-    _rtk_stub(bin_dir, "rtk 1.0.1", flip=True)
+    _rtk_stub(bin_dir, "rtk 1.1.0", flip=True)
     install_dir = tmp_path / "install"
     install_dir.mkdir()
     env = _setup_env(repo, tmp_path / "staging", install_dir, extra={
