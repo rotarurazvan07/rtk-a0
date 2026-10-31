@@ -58,7 +58,7 @@ def _reprovision_boot() -> None:
 
 
 class RtkBootReprovisioningMigration(Extension):
-    def execute(self, **kwargs):
+    def execute(self, **kwargs: Any):
         global _startup_migration_thread
         with _SPAWN_LOCK:
             # Check+assign+start under one lock: rapid reloads can never

@@ -18,6 +18,6 @@ def _page_route() -> str:
     return f"plugins/{installed_name}/webui/main.html"
 
 
-def run(payload: dict) -> dict:
+def run(payload: dict[str, Any]) -> dict[str, Any]:
     """Return the single open_modal effect the command palette executes."""
     return {"text": "", "effects": [{"type": "open_modal", "path": "/" + _page_route()}]}

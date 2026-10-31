@@ -400,7 +400,7 @@ def test_no_shell_true_and_single_mutation_point():
     tests_dir = PLUGIN_ROOT / "tests"
     venv_dir = PLUGIN_ROOT / ".venv"
     for pyfile in PLUGIN_ROOT.rglob("*.py"):
-        if tests_dir in pyfile.parents:  # skip test sources (they name the anti-pattern)
+        if tests_dir in pyfile.parents or '.venv' in pyfile.parts:  # skip test sources (they name the anti-pattern)
             continue
         if venv_dir in pyfile.parents:  # skip the project venv (third-party sources)
             continue
@@ -994,7 +994,7 @@ def test_no_rtk_derived_code_or_licensing_drift():
     tests_dir = PLUGIN_ROOT / "tests"
     needles = ("hermes", "rtk_ai", "import rtk", "from rtk")
     for pyfile in PLUGIN_ROOT.rglob("*.py"):
-        if tests_dir in pyfile.parents:
+        if tests_dir in pyfile.parents or '.venv' in pyfile.parts:
             continue
         src = pyfile.read_text().lower()
         for needle in needles:
@@ -1239,7 +1239,7 @@ def test_no_plugin_owned_savings_persistence():
         if candidate.suffix != ".json" and "stats" not in candidate.name and "state" not in candidate.name:
             continue
         parts = candidate.relative_to(PLUGIN_ROOT).parts
-        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", ".desloppify", ".neuralmind", "graphify-out")):
+        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".venv", ".git", ".desloppify", ".neuralmind", "graphify-out")):
             continue
         owned.append(str(candidate))
     assert not owned, f"plugin-owned persistence surface exists: {owned}"
@@ -1261,7 +1261,7 @@ def test_no_plugin_owned_savings_persistence():
         if "gain" not in name and "saving" not in name and "stats" not in name:
             continue
         parts = candidate.relative_to(PLUGIN_ROOT).parts
-        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", "docs", "node_modules", ".venv", ".desloppify", ".neuralmind", "graphify-out")):
+        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".venv", ".git", "docs", "node_modules", ".venv", ".desloppify", ".neuralmind", "graphify-out")):
             continue
         is_persistence_surface = candidate.suffix in LEDGER_SUFFIXES
         if not is_persistence_surface and candidate.suffix in {".py", ".js", ".html", ".htm"}:
