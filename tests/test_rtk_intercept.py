@@ -398,8 +398,11 @@ def test_timeout_constant_pinned():
 def test_no_shell_true_and_single_mutation_point():
     """structural: shell=True never appears in plugin source; tool_args['code'] = written at exactly one place (single mutation point)."""
     tests_dir = PLUGIN_ROOT / "tests"
+    venv_dir = PLUGIN_ROOT / ".venv"
     for pyfile in PLUGIN_ROOT.rglob("*.py"):
         if tests_dir in pyfile.parents:  # skip test sources (they name the anti-pattern)
+            continue
+        if venv_dir in pyfile.parents:  # skip the project venv (third-party sources)
             continue
         src = pyfile.read_text()
         assert "shell=True" not in src, f"shell=True forbidden everywhere: {pyfile}"
@@ -1022,7 +1025,7 @@ def test_fail_open_branches_emit_no_log_noise():
         assert len(agent.warnings) == 0, f"{name}: notification is reserved for binary-missing"
 
 
-# ---: rc-3 acceptance gate (, CC -ESCALATION-1 Option A) ---
+# --- rc-3 acceptance gate ---
 
 def test_rc3_rewrite_applies_mutation():
     """A rewrite-available exit with differing non-empty stdout mutates tool_args at the single mutation point; no other key is touched."""
@@ -1236,12 +1239,20 @@ def test_no_plugin_owned_savings_persistence():
         if candidate.suffix != ".json" and "stats" not in candidate.name and "state" not in candidate.name:
             continue
         parts = candidate.relative_to(PLUGIN_ROOT).parts
-        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", ".desloppify", ".neuralmind")):
+        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", ".desloppify", ".neuralmind", "graphify-out")):
             continue
         owned.append(str(candidate))
     assert not owned, f"plugin-owned persistence surface exists: {owned}"
     # extension: gain-visibility must add nothing either —
-    # no plugin-owned gain/savings ledger anywhere in the plugin tree.
+    # no plugin-owned gain/savings LEDGER anywhere in the plugin tree. A ledger
+    # is a persistence SURFACE (data-file suffix or a persistence primitive in
+    # the body); the sanctioned command surface (.command.yaml / handler
+    # .py / page .js) is a UI surface that persists nothing and is not a ledger.
+    LEDGER_SUFFIXES = {".json", ".db", ".sqlite", ".sqlite3", ".csv",
+                       ".tsv", ".ndjson", ".parquet"}
+    LEDGER_BODY_MARKERS = ("json.dump", "json.dumps", "write_text", "write_bytes",
+                           "sqlite3.connect", "Path(\"", "os.replace", "os.rename",
+                           "open(", "shutil.copy")
     ledger = []
     for candidate in PLUGIN_ROOT.rglob("*"):
         if not candidate.is_file():
@@ -1250,12 +1261,38 @@ def test_no_plugin_owned_savings_persistence():
         if "gain" not in name and "saving" not in name and "stats" not in name:
             continue
         parts = candidate.relative_to(PLUGIN_ROOT).parts
-        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", "docs", "node_modules", ".desloppify", ".neuralmind")):
+        if any(p in parts for p in ("tests", ".a0proj", ".serena", ".pytest_cache", "venv", ".git", "docs", "node_modules", ".venv", ".desloppify", ".neuralmind", "graphify-out")):
             continue
-        ledger.append(str(candidate))
+        is_persistence_surface = candidate.suffix in LEDGER_SUFFIXES
+        if not is_persistence_surface and candidate.suffix in {".py", ".js", ".html", ".htm"}:
+            body = candidate.read_text(encoding="utf-8", errors="replace")
+            is_persistence_surface = any(m in body for m in LEDGER_BODY_MARKERS)
+        if is_persistence_surface:
+            ledger.append(str(candidate))
     assert not ledger, f"no plugin-owned gain/savings ledger: {ledger}"
     # hooks.py and scripts/setup.sh must not write any stats-like surface.
     for text_path in (PLUGIN_ROOT / "hooks.py", PLUGIN_ROOT / "scripts" / "setup.sh"):
         body = text_path.read_text()
         for needle in ("stats.json", "gain.json", "savings.json"):
             assert needle not in body, f"{text_path.name} must not persist {needle}"
+
+
+def test_next_session_rtk_present_resumes_compression_no_warning():
+    """Per-session latch semantics (confirmation only — no intercept change):
+    in a *next* session where boot re-provisioning restored rtk, a fresh
+    agent.data carries no warn-once flag; with rtk present the guard
+    delegates for a non-rtk-prefixed command and stays silent — zero
+    warnings, the rewrite applied."""
+    agent = _StubAgent()
+    ext = _load_ext_with_agent(agent)
+    tool_args = {"code": "git status", "runtime": "terminal", "tool_name": "code_execution_tool"}
+    snapshot = dict(tool_args)
+    with patch("shutil.which", return_value="/usr/local/bin/rtk"), patch(
+        "subprocess.run", side_effect=_fake_run(rc=0, stdout="rtk git status\n")
+    ):
+        ext.execute(tool_name="code_execution_tool", tool_args=tool_args)
+    assert tool_args["code"] == "rtk git status", "guard delegated once rtk is available"
+    missing = [w for w in agent.warnings if "unavailable" in str(w.get("content", "")).lower()]
+    assert missing == [], f"no missing-binary warning in the next session: {missing}"
+    assert agent.data.get("rtk_a0_missing_warned") is not True
+    assert tool_args["runtime"] == snapshot["runtime"], "only 'code' may be written"

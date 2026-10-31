@@ -16,7 +16,7 @@ Search for **rtk** in Agent Zero's Plugin Hub and install.
 **Option 2: Git clone**
 
 ```bash
-git clone https://github.com/rotarurazvan07/rtk-a0.git usr/plugins/rtk_a0
+git clone https://github.com/rotarurazvan07/rtk-a0.git usr/plugins/rtk_compression
 ```
 
 ## How it works
@@ -24,6 +24,8 @@ git clone https://github.com/rotarurazvan07/rtk-a0.git usr/plugins/rtk_a0
 1. On install or update, `scripts/setup.sh` downloads the RTK release pinned in `rtk_pin.txt` (currently `v1.0.1`, static musl build), verifies its SHA-256 against the release `checksums.txt`, and installs it to `/usr/local/bin/rtk`.
 2. Before each terminal command runs, the plugin calls `rtk rewrite <command>`.
 3. If RTK returns a rewrite, that runs instead. Otherwise the original command runs.
+
+**Automatic recovery:** if the RTK binary is missing or its version no longer matches `rtk_pin.txt` — for example after a container restart or an image rebuild — the plugin re-provisions it in the background the next time Agent Zero starts. No configuration is needed, and the check costs one `rtk --version` call when the binary is already correct. Uninstalling the plugin still leaves the user-owned binary at `/usr/local/bin/rtk` in place.
 
 Rewritten commands still pass through Agent Zero's normal permission layer. The plugin never bypasses approvals.
 
@@ -50,6 +52,21 @@ Savings depend on the command. Output-heavy commands compress well; tiny outputs
 No configuration needed. A few useful things to know:
 
 - Commands you prefix with `rtk` yourself (`rtk gain`, `rtk --version`) pass through untouched.
+
+### Savings page — RTK's totals on demand
+
+Run **`rtk-gain`** from the command palette to open a read-only savings
+page. It fetches RTK's own accounting **once, when the page opens**, and
+shows the totals **as RTK formats them** — tokens saved and the savings
+percentage come from RTK's ledger; this plugin never recomputes or re-rounds
+them. While the page is closed there is **no background polling and no network
+traffic**, and the plugin persists nothing.
+
+When RTK's ledger is empty (fresh install, no tracked commands yet) the page
+says so instead of showing zeros. When the RTK binary is unavailable, the
+page shows a notice pointing at the Troubleshooting section below — never an
+error page, and the agent keeps working either way.
+
 - **Want raw output?** Use `rtk bypass <command>`:
 
 ```

@@ -1,0 +1,4 @@
+name: rtk-gain
+description: Open the RTK savings page and view lifetime token savings on demand.
+type: script
+script_path: rtk_gain_command.py

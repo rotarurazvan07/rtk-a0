@@ -220,10 +220,16 @@ def _installed_version() -> str | None:
     lines = [ln.strip() for ln in (result.stdout or "").splitlines() if ln.strip()]
     if not lines:
         return None
-    token = lines[-1].split()[-1]
+    # Parse FIRST non-empty line for consistency with setup.sh exact-token grep
+    # (setup.sh: grep -Fxq over full output; rtk prints "rtk X.Y.Z" on first line)
+    first = lines[0]
+    token = first.split()[-1]
     if token.startswith("v"):
         token = token[1:]
-    return token or None
+    # Validate semver-ish shape; fall back to None to trigger drift re-provision
+    if not token or not any(c.isdigit() for c in token):
+        return None
+    return token
 
 
 def _pin_version() -> str:
@@ -231,6 +237,48 @@ def _pin_version() -> str:
     file is missing or unreadable (plugin damage, not a version match)."""
     raw = (_PLUGIN_DIR / "rtk_pin.txt").read_text(encoding="utf-8").strip()
     return raw[1:] if raw.startswith("v") else raw
+
+
+def _ensure_pinned_rtk(context: str) -> None:
+    """Shared drift-check + re-provision path (single source of truth).
+
+    Probes the installed rtk token against rtk_pin.txt and runs setup.sh
+    only when the binary is absent, the pin is unreadable, or the versions
+    differ. Both the update lifecycle (pre_update) and the boot-time
+    entrypoint (ensure_provisioned) delegate here, so the probe/pin logic
+    exists exactly once. Every message path is fault-proof (_desc/_say);
+    a comparison fault propagates to the caller's outer guard by design.
+    """
+    try:
+        installed = _installed_version()
+    except Exception as exc:
+        # Any probe failure (absent binary, OSError, timeout, or a
+        # ValueError/TypeError-family fault) is unreadable = drift.
+        installed = None
+        _say("warning", "rtk version probe failed (" + _desc(exc) + "); re-checking via setup")
+    try:
+        pin = _pin_version()
+    except Exception as exc:
+        # An unreadable pin is plugin damage, not a version match; warn
+        # distinctly and still attempt re-provisioning.
+        pin = None
+        _say("warning", "rtk pin unreadable (" + _desc(exc) + "); re-checking via setup")
+    if installed is not None and pin is not None and installed == pin:
+        _say("info", "rtk " + installed + " matches pin; " + context + " leaves binary untouched")
+        return
+    if installed is None:
+        _say("info", "rtk binary unavailable or unreadable; running setup to re-provision")
+    elif pin is None:
+        _say("info", "rtk pin unreadable; running setup to re-provision")
+    else:
+        _say("info", "rtk " + installed + " != pin " + pin + "; running setup to re-provision")
+    try:
+        result = _run_setup()
+    except Exception as exc:
+        # A failing re-provision must not fail the lifecycle that called it.
+        _say("warning", "rtk re-provisioning failed (" + _desc(exc) + "); agent runs as-is")
+        return
+    _report_setup(result.returncode, _setup_output(result), "re-provision")
 
 
 def pre_update() -> None:
@@ -245,38 +293,30 @@ def pre_update() -> None:
     # The outer guard is fault-proof: every inner handler builds its message
     # via _desc(), so nothing can escape this hook.
     try:
-        try:
-            installed = _installed_version()
-        except Exception as exc:
-            # Any probe failure (absent binary, OSError, timeout, or a
-            # ValueError/TypeError-family fault) is unreadable = drift.
-            installed = None
-            _say("warning", "rtk version probe failed (" + _desc(exc) + "); re-checking via setup")
-        try:
-            pin = _pin_version()
-        except Exception as exc:
-            # An unreadable pin is plugin damage, not a version match; warn
-            # distinctly and still attempt re-provisioning.
-            pin = None
-            _say("warning", "rtk pin unreadable (" + _desc(exc) + "); re-checking via setup")
-        if installed is not None and pin is not None and installed == pin:
-            _say("info", "rtk " + installed + " matches pin; update leaves binary untouched")
-            return
-        if installed is None:
-            _say("info", "rtk binary unavailable or unreadable; running setup to re-provision")
-        elif pin is None:
-            _say("info", "rtk pin unreadable; running setup to re-provision")
-        else:
-            _say("info", "rtk " + installed + " != pin " + pin + "; running setup to re-provision")
-        try:
-            result = _run_setup()
-        except Exception as exc:
-            # A failing re-provision must not fail the update lifecycle.
-            _say("warning", "rtk re-provisioning failed (" + _desc(exc) + "); agent runs as-is")
-            return
-        _report_setup(result.returncode, _setup_output(result), "re-provision")
+        _ensure_pinned_rtk("update")
     except Exception as exc:
         _say("warning", "rtk pre_update degraded (" + _desc(exc) + "); update continues")
+
+
+def ensure_provisioned(raise_on_error: bool = False) -> None:
+    """Boot-time re-provisioning entrypoint (framework startup migration).
+
+    Called at framework boot by the plugin's startup_migration extension
+    (extensions/python/startup_migration/) through call_plugin_hook, so a
+    container restart or image rebuild that lost the user-owned binary is
+    repaired without human action. Shares the probe/pin/drift classification
+    and the setup invocation with pre_update (single source of truth); the
+    same never-raise, warn-not-fail, timeout, and exit-code taxonomy apply.
+    The correct-match path is a single cheap version probe: no writes, no
+    downloads, zero setup invocations. The framework caller passes NO args;
+    safe_call drops undeclared kwargs, so raise_on_error only reaches the
+    hook because it is declared. This hook never raises regardless. install/
+    uninstall/pre_update semantics are unchanged by this entrypoint.
+    """
+    try:
+        _ensure_pinned_rtk("boot check")
+    except Exception as exc:
+        _say("warning", "rtk boot re-provisioning degraded (" + _desc(exc) + "); startup continues")
 
 
 def uninstall() -> None:

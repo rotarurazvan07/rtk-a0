@@ -40,7 +40,7 @@ def _code_source() -> str:
 
 
 
-# Host-state isolation (CR-2.4-D1): a minimal controlled base PATH keeps the
+# Host-state isolation: a minimal controlled base PATH keeps the
 # suite deterministic on hosts that have a real rtk on PATH - inherited PATH
 # let host binaries shadow the stubs, making download/verify branches
 # unreachable (12 failures on rtk-equipped containers).
@@ -55,7 +55,7 @@ def _plan_env(root: Path) -> dict:
 
 
 def _run_plan(root: Path, cwd: Path | None = None) -> list[tuple[str, str]]:
-    """Run `setup.sh --print-download-plan` against a project root; return (name, url) pairs. Two-sided normalization discipline ( retro checklist): both sides of every comparison are stripped. Optional cwd proves CWD-independence."""
+    """Run `setup.sh --print-download-plan` against a project root; return (name, url) pairs. Two-sided normalization discipline ( two-sided comparison discipline): both sides of every comparison are stripped. Optional cwd proves CWD-independence."""
     proc = subprocess.run(
         ["bash", str(SETUP), "--print-download-plan"],
         cwd=str(cwd) if cwd else None,
@@ -947,7 +947,7 @@ def _run_network_failure(tmp_path: Path, rc: int, partial_bytes: int = 0, pin_te
 
 
 def _combined(proc) -> str:
-    """Two-sided normalized combined output ( retro discipline)."""
+    """Two-sided normalized combined output ( two-sided comparison discipline)."""
     return (proc.stdout + "\n" + proc.stderr).strip()
 
 
@@ -1018,11 +1018,11 @@ def test_self_check_failure_warns_and_rolls_back(tmp_path):
 def test_warned_setup_leaves_snapshot_clean(tmp_path):
     """after warned exit-0 runs the plugin tree has no new files. Captures the full plugin-root snapshot before/after and asserts no stray state was written into the repo (warn paths must stay read-only w.r.t. the project tree)."""
     before = {p.relative_to(PLUGIN_ROOT): p.stat().st_mtime_ns
-              for p in PLUGIN_ROOT.rglob("*") if ".pytest_cache" not in p.parts and "__pycache__" not in p.parts}
+              for p in PLUGIN_ROOT.rglob("*") if ".pytest_cache" not in p.parts and "__pycache__" not in p.parts and "graphify-out" not in p.parts}
     proc, install_dir, _log, _staging = _run_network_failure(tmp_path, rc=7)
     assert proc.returncode == 0, _combined(proc)
     after = {p.relative_to(PLUGIN_ROOT): p.stat().st_mtime_ns
-             for p in PLUGIN_ROOT.rglob("*") if ".pytest_cache" not in p.parts and "__pycache__" not in p.parts}
+             for p in PLUGIN_ROOT.rglob("*") if ".pytest_cache" not in p.parts and "__pycache__" not in p.parts and "graphify-out" not in p.parts}
     assert before == after, "warned run must not modify the plugin tree"
 
 
@@ -1108,7 +1108,7 @@ def test_agent_fail_open_bridge_pointer(tmp_path):
 # regression tests (/T18v2/-#4):
 # install-surface and classification boundaries pinned by the review.
 # Each test below fails if its corresponding in-review patch is reverted
-# (mutation-kill validated in the CR record).
+# (mutation-validated).
 # ---------------------------------------------------------------------------
 
 

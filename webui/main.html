@@ -1,0 +1,263 @@
+<html>
+<head>
+  <title>RTK Savings</title>
+</head>
+<body>
+  <div x-data
+       x-init="$store.rtkGain.onOpen($el)"
+       x-destroy="$store.rtkGain.cleanup()">
+
+    <div x-show="$store.rtkGain.status === 'loading'">
+      <p>Opening savings page&#8230;</p>
+    </div>
+
+    <div x-show="$store.rtkGain.status === 'error'">
+      <p x-text="$store.rtkGain.error"></p>
+    </div>
+
+    <!-- ready state: terminal view (primary) or notice -->
+    <template x-if="$store.rtkGain.status === 'ready'">
+
+      <template x-if="$store.rtkGain.term()">
+        <div class="rtk-term">
+          <template x-for="(line, i) in $store.rtkGain.term()" :key="i"><div><template x-for="(seg, j) in line" :key="j"><span :class="seg.c" x-text="seg.t"></span></template></div></template>
+        </div>
+      </template>
+
+      <template x-if="!$store.rtkGain.term()">
+        <div class="rtk-gain-notice">
+          <h1>RTK savings</h1>
+          <p x-text="$store.rtkGain.notice"></p>
+        </div>
+      </template>
+
+    </template>
+
+  </div>
+
+  <style>
+    .rtk-term {
+      background: #0c0c0c; color: #cccccc; padding: 14px 16px; border-radius: 6px;
+      font: 13px/1.25 "Cascadia Mono", "JetBrains Mono", Consolas, "DejaVu Sans Mono", monospace;
+      white-space: pre; overflow-x: auto; max-width: 100%;
+    }
+    .rtk-term .t-title   { color: #16c60c; font-weight: 700; }
+    .rtk-term .t-section { color: #3a96dd; font-weight: 700; }
+    .rtk-term .t-rule    { color: #5a5a5a; }
+    .rtk-term .t-head    { color: #f2f2f2; font-weight: 700; }
+    .rtk-term .t-cmd     { color: #61d6d6; font-weight: 700; }
+    .rtk-term .t-good    { color: #16c60c; }
+    .rtk-term .t-mid     { color: #f9f1a5; }
+    .rtk-term .t-bad     { color: #f78166; }
+    .rtk-term .t-meter   { color: #16c60c; }
+    .rtk-term .t-impact  { color: #61d6d6; }
+    .rtk-term .t-dim     { opacity: .3; }
+    .rtk-gain-notice { padding: 1rem; color: #aaa; }
+  </style>
+
+  <script>
+// RTK savings page store (slash-command surface, zero-load contract).
+// Zero-load invariant: the ONLY entry point is onOpen (page open). No timers,
+// no watchers, no polling, no background refresh - the single fetch below is
+// issued exactly once per open and nowhere else.
+
+// NOTE: top-level `var` (not `const`) is deliberate: A0 re-creates classic
+// script nodes on every modal open (webui/js/components.js non-module branch,
+// uncached) while module scripts are URL-cached there - a top-level const would
+// throw a redeclaration SyntaxError on the second open. Bundled precedents
+// (_whats_new, _kokoro_tts) use module scripts instead; this shell keeps the
+// classic-script shape its node test harness drives.
+
+// Bounded lifecycle log: repeated open/destroy mounts must not grow it forever
+// (events[] discipline). 64 entries is far beyond any diagnostic need.
+// The POST target of the savings endpoint is derived from this page's own
+// modal path (the framework stamps every modal element with a data-modal-path
+// attribute holding its route). No plugin directory name is baked into this
+// document, so one shipped page serves every installed directory name.
+function rtkGainEndpointForModalPath(modalPath) {
+  const match = /^\/plugins\/([^/]+)\//.exec(String(modalPath || ""));
+  if (!match) return "";
+  return "/api/plugins/" + match[1] + "/rtk_gain";
+}
+
+function rtkGainEndpointFromElement($el) {
+  const modal = $el && typeof $el.closest === "function"
+    ? $el.closest(".modal[data-modal-path]")
+    : null;
+  if (!modal) return "";
+  return rtkGainEndpointForModalPath(modal.dataset && modal.dataset.modalPath);
+}
+
+// Bounded lifecycle log: repeated open/destroy mounts must not grow it forever
+// (events[] discipline). 64 entries is far beyond any diagnostic need.
+var RTK_GAIN_EVENTS_MAX = 64;
+
+var createRtkGainStore = () => ({
+  status: "idle", // idle | loading | ready | error
+  notice: "", // friendly copy for the ready-but-nothing-to-show states
+  terminal: "", // verbatim `rtk gain` text from the endpoint
+  error: "", // network-level failure text (error state, not a notice)
+  view: { view: "loading" }, // render projection for the page
+  events: [], // bounded lifecycle log
+  _mount: 0, // monotonic mount generation (stale-response guard)
+
+  onOpen($el) {
+    // the page-open lifecycle hands its own element; the endpoint target
+    // is derived from the modal path that element lives in. When no modal
+    // ancestor is resolvable the surface fails visibly (error state) -
+    // never a silent no-op and never a baked-in fallback name.
+    if (this.status !== "idle") return;
+    // review patch: enter loading BEFORE the derivation so a
+    // derivation failure lands in the visible error state. fail() only
+    // advances from loading, so calling it from idle would no-op and
+    // strand the page on a blank view (the defect this fixes).
+    this.status = "loading";
+    this._emit("open");
+    this._emit("status", "idle", "loading");
+    const endpoint = rtkGainEndpointFromElement($el);
+    if (!endpoint) {
+      this.fail("savings page could not resolve its endpoint");
+      return;
+    }
+    if (typeof fetch !== "function") {
+      this.fail("endpoint client unavailable in this runtime");
+      return;
+    }
+    // mount generation: cleanup() bumps this token so a response from a
+    // torn-down mount can never write into a fresh one
+    const mount = ++this._mount;
+    this._inflight = fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        // stale-write guard: only this mount's response may drive state
+        if (mount !== this._mount) return;
+        this.handle(data);
+      })
+      .catch(() => {
+        // network-level failure - distinct from endpoint notice states
+        if (mount !== this._mount) return;
+        this.fail("savings summary could not be fetched");
+      });
+    // the chain itself: awaited by the open lifecycle so the page renders
+    // after the response lands (node harness scenario contract)
+    return this._inflight;
+  },
+
+  handle(data) {
+    // consume the endpoint contract: ok+terminal -> terminal view,
+    // anything else -> a friendly notice (never raw error chrome).
+    // a response from a torn-down mount (or any non-loading state) is
+    // dropped here - the machine only advances from loading
+    if (this.status !== "loading") return;
+    if (data && data.ok === true && data.terminal) {
+      this.terminal = String(data.terminal);
+      this.notice = "";
+      this.status = "ready";
+      this._emit("status", "loading", "ready");
+      return "ready";
+    }
+    const reason = String((data && data.error) || "").split(":")[0].trim();
+    if (data && data.rtk_available === false) {
+      this.notice = "The RTK binary was not found on PATH, so there are no savings to show yet. Re-run setup from the plugin directory to provision it - see the Troubleshooting section of the README.";
+    } else if (reason === "timeout") {
+      this.notice = "RTK did not answer in time, so the summary could not be read. RTK's own accounting is unchanged - try opening the page again.";
+    } else if (reason === "spawn-failed") {
+      this.notice = "RTK could not be started, so the summary could not be read. Try opening the page again - see the README Troubleshooting section if it repeats.";
+    } else if (reason === "nonzero-exit") {
+      this.notice = "RTK exited with an error this time, so the summary could not be read. RTK's own accounting is unchanged - try opening the page again.";
+    } else if (reason === "unparseable-output") {
+      this.notice = "RTK's output could not be read in a known format. RTK's own accounting is unchanged - try opening the page again.";
+    } else {
+      this.notice = "The savings summary could not be read this time. Agent Zero and RTK are unaffected - try opening the page again.";
+    }
+    this.terminal = "";
+    this.status = "ready";
+    this._emit("status", "loading", "ready");
+    return "notice";
+  },
+
+  fail(message) {
+    if (this.status !== "loading") return;
+    this.status = "error";
+    this.error = String(message || "unknown error");
+    this._emit("status", "loading", "error");
+  },
+
+  term() {
+    // terminal projection: RTK's own text, split into styled segments per line
+    if (this.status !== "ready" || !this.terminal) return null;
+    const pctCls = (p) => (p >= 70 ? "t-good" : p >= 40 ? "t-mid" : "t-bad");
+    const bar = (s, c) => {
+      const m = s.match(/^(█*)(░*)$/);
+      return m ? [{ t: m[1], c }, { t: m[2], c: c + " t-dim" }] : [{ t: s, c: "" }];
+    };
+    return this.terminal.replace(/\s+$/, "").split("\n").map((line) => {
+      let m;
+      if (/^RTK Token Savings/.test(line)) return [{ t: line, c: "t-title" }];
+      if (/^\s*[═─]{5,}\s*$/.test(line)) return [{ t: line, c: "t-rule" }];
+      if (/^By Command/.test(line)) return [{ t: line, c: "t-section" }];
+      if (/^\s*#\s+Command/.test(line)) return [{ t: line, c: "t-head" }];
+      if (/^\s*[▶►▸]/.test(line)) return [{ t: line, c: "t-good" }];
+      if ((m = line.match(/^(Efficiency meter:\s+)([█░]+)(\s+)(\d+(?:\.\d+)?)%\s*$/))) {
+        return [
+          { t: m[1], c: "" },
+          ...bar(m[2], "t-meter"),
+          { t: m[3], c: "" },
+          { t: m[4] + "%", c: pctCls(parseFloat(m[4])) },
+        ];
+      }
+      if ((m = line.match(/^(\s*\d+\.\s+)(.*?)(\s+\d+\s+\S+\s+)(\d+(?:\.\d+)?)%(\s+\S+\s+)([█░]+)\s*$/))) {
+        return [
+          { t: m[1], c: "" },
+          { t: m[2], c: "t-cmd" },
+          { t: m[3], c: "" },
+          { t: m[4] + "%", c: pctCls(parseFloat(m[4])) },
+          { t: m[5], c: "" },
+          ...bar(m[6], "t-impact"),
+        ];
+      }
+      return [{ t: line || " ", c: "" }];
+    });
+  },
+
+  _emit(type, from, to) {
+    const entry = to === undefined ? { type } : { type, from, to };
+    this.events.push(entry);
+    if (this.events.length > RTK_GAIN_EVENTS_MAX) this.events.shift();
+  },
+
+  cleanup() {
+    // x-destroy teardown: a fresh mount starts from a clean machine.
+    // review patch: the mount generation is bumped here as well
+    // as in onOpen, so an in-flight response from a torn-down mount can
+    // never write into a fresh one (defense-in-depth alongside the
+    // loading-state guards in handle()/fail()).
+    this.status = "idle";
+    this.notice = "";
+    this.terminal = "";
+    this.error = "";
+    this.view = { view: "loading" };
+    this.events = [];
+    this._mount += 1;
+  },
+});
+
+globalThis.createRtkGainStore = createRtkGainStore;
+
+var _rtkGainStore = createRtkGainStore();
+// Registration: register now when Alpine already exists (browser main-document
+// or node harness), otherwise wait for alpine:init. The listener branch is
+// guarded because the store file also runs inside a plain node vm sandbox,
+// where no document exists - registering there must not throw.
+if (typeof Alpine !== "undefined" && Alpine.store) {
+  Alpine.store("rtkGain", _rtkGainStore);
+} else if (typeof document !== "undefined" && document.addEventListener) {
+  document.addEventListener("alpine:init", () => Alpine.store("rtkGain", _rtkGainStore));
+}
+</script>
+</body>
+</html>

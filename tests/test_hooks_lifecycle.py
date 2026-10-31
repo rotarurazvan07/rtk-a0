@@ -32,7 +32,7 @@ def test_path_load_and_static_import_expose_identical_surface(hooks):
     """The A0 path-loaded module and a static `import hooks` expose the same
     public surface: the framework dispatches getattr(hooks, name), so both
     loads must serve identical callables and constants."""
-    for name in ("install", "pre_update", "uninstall"):
+    for name in ("install", "pre_update", "uninstall", "ensure_provisioned"):
         assert callable(getattr(_static_hooks, name)), f"static import missing {name}"
         assert getattr(hooks, name).__code__.co_code == getattr(_static_hooks, name).__code__.co_code, (
             f"{name} differs between path-load and static import"
@@ -485,7 +485,7 @@ def test_install_guards_logging_failures(hooks, monkeypatch):
 
 # ---------------------------------------------------------------------------
 # — Lifecycle Uninstall & Update Safety
-# Red phase: these tests are written against the Story-2.4 stub hooks and
+# Red phase: these tests are written against the pre-implementation stub hooks and
 # MUST fail until real uninstall/pre_update land (/2).
 # ---------------------------------------------------------------------------
 
@@ -807,3 +807,204 @@ def test_pre_update_classifies_setup_exit_codes(hooks, monkeypatch, rc, needle):
     assert hooks.pre_update() is None
     assert _hook_run_setup_count(calls) == 1, calls
     assert any(needle in t for t in rec.texts), (needle, rec.texts)
+
+
+# ---------------------------------------------------------------------------
+# Boot-time re-provisioning entrypoint (framework boot path)
+# ensure_provisioned() is the framework-boot entrypoint in hooks.py; it shares
+# the probe/pin/drift classification with pre_update (single source of truth)
+# and never raises. The extension surface pins live in
+# tests/test_rtk_bootstrap.py; this block pins the hook contract.
+# ---------------------------------------------------------------------------
+
+def test_ensure_provisioned_exists_zero_arg_callable(hooks):
+    """The framework dispatch resolves the hook by name and calls it with no
+    args (safe_call may add raise_on_error), so it must exist and be
+    callable with zero arguments."""
+    fn = getattr(hooks, "ensure_provisioned", None)
+    assert callable(fn), "hooks.ensure_provisioned missing or not callable"
+
+
+def test_ensure_provisioned_skips_setup_when_version_matches_pin(hooks, monkeypatch):
+    """Idempotence: installed == pin -> probe only, setup invoked ZERO times,
+    nothing written, nothing downloaded."""
+    pin = _pin_version()
+    calls = _patch_version_then_setup(
+        hooks, monkeypatch, probe=_probe_result(f"rtk {pin}"), setup=_Result(0, "", "")
+    )
+    rec = _install_style(hooks, monkeypatch)
+    assert hooks.ensure_provisioned() is None
+    assert _hook_run_setup_count(calls) == 0, calls
+    assert len(calls) == 1, f"only the cheap version probe may run: {calls}"
+    assert any("matches pin" in t for t in rec.texts), rec.texts
+
+
+def test_ensure_provisioned_provisions_once_when_binary_absent(hooks, monkeypatch):
+    """Absent binary -> exactly one setup invocation."""
+    calls = _patch_version_then_setup(
+        hooks, monkeypatch,
+        probe=FileNotFoundError("no rtk"), setup=_Result(0, "", ""),
+    )
+    monkeypatch.setattr(hooks, "_style", _Rec())
+    assert hooks.ensure_provisioned() is None
+    assert _hook_run_setup_count(calls) == 1, calls
+
+
+def test_ensure_provisioned_provisions_once_on_version_drift(hooks, monkeypatch):
+    """Version drift -> exactly one setup invocation."""
+    calls = _patch_version_then_setup(
+        hooks, monkeypatch, probe=_probe_result("rtk 9.9.9"), setup=_Result(0, "", "")
+    )
+    monkeypatch.setattr(hooks, "_style", _Rec())
+    assert hooks.ensure_provisioned() is None
+    assert _hook_run_setup_count(calls) == 1, calls
+
+
+def test_ensure_provisioned_provisions_once_when_pin_unreadable(hooks, monkeypatch):
+    """Unreadable pin (plugin damage, not a match) -> one setup attempt."""
+    def _raise_evil(*a, **k):
+        raise _EvilStr()
+
+    monkeypatch.setattr(hooks, "_pin_version", _raise_evil)
+    calls = _patch_version_then_setup(
+        hooks, monkeypatch, probe=_probe_result("rtk 1.0.1"), setup=_Result(0, "", "")
+    )
+    rec = _install_style(hooks, monkeypatch)
+    assert hooks.ensure_provisioned() is None
+    assert _hook_run_setup_count(calls) == 1, calls
+    assert any("pin unreadable" in t for t in rec.texts), rec.texts
+
+
+@pytest.mark.parametrize(
+    "rc,needle",
+    [
+        (0, "re-provision complete"),
+        (2, "usage error"),
+        (126, "could not run"),
+        (127, "could not run"),
+        (-9, "could not run"),
+        (1, "integrity/format failure"),
+    ],
+)
+def test_ensure_provisioned_uses_the_shared_setup_exit_taxonomy(hooks, monkeypatch, rc, needle):
+    """Boot re-provisioning reports setup exits through the same taxonomy as
+    install/pre_update (one operator vocabulary)."""
+    calls = _patch_version_then_setup(
+        hooks, monkeypatch, probe=_probe_result("rtk 9.9.9"), setup=_Result(rc, "detail", "")
+    )
+    rec = _install_style(hooks, monkeypatch)
+    assert hooks.ensure_provisioned() is None
+    assert _hook_run_setup_count(calls) == 1, calls
+    assert any(needle in t for t in rec.texts), (needle, rec.texts)
+
+
+def test_ensure_provisioned_shares_drift_classification_with_pre_update(hooks, monkeypatch):
+    """pre_update delegates to the same shared helper: on every matrix cell
+    the setup-invocation count must equal ensure_provisioned's (pre_update
+    semantics unchanged - drift re-provisions, match skips)."""
+    pin = _pin_version()
+    matrix = [
+        ("match", _probe_result(f"rtk {pin}")),
+        ("absent", FileNotFoundError("no rtk")),
+        ("drift", _probe_result("rtk 9.9.9")),
+        ("empty", _probe_result("   \n")),
+    ]
+    for label, probe in matrix:
+        calls = _patch_version_then_setup(
+            hooks, monkeypatch, probe=probe, setup=_Result(0, "", "")
+        )
+        monkeypatch.setattr(hooks, "_style", _Rec())
+        assert hooks.ensure_provisioned() is None, label
+        boot_count = _hook_run_setup_count(calls)
+        calls2 = _patch_version_then_setup(
+            hooks, monkeypatch, probe=probe, setup=_Result(0, "", "")
+        )
+        monkeypatch.setattr(hooks, "_style", _Rec())
+        assert hooks.pre_update() is None, label
+        update_count = _hook_run_setup_count(calls2)
+        assert boot_count == update_count, (
+            f"{label}: boot {boot_count} != update {update_count}"
+        )
+
+
+@pytest.mark.parametrize("exc", [FileNotFoundError("no bash"), OSError("boom"), subprocess.TimeoutExpired("bash", 120)])
+def test_ensure_provisioned_never_raises_on_setup_fault(hooks, monkeypatch, exc):
+    """A failing setup on the boot path warns and returns; a broken boot can
+    never break framework startup."""
+    calls = _patch_version_then_setup(
+        hooks, monkeypatch, probe=_probe_result("rtk 9.9.9"), exc=exc
+    )
+    monkeypatch.setattr(hooks, "_style", _Rec())
+    assert hooks.ensure_provisioned() is None
+    assert _hook_run_setup_count(calls) == 1, calls
+
+
+def test_ensure_provisioned_never_raises_when_style_breaks(hooks, monkeypatch):
+    """A broken logger must not abort the provisioning it announces."""
+    calls = _patch_version_then_setup(
+        hooks, monkeypatch, probe=_probe_result("rtk 9.9.9"), setup=_Result(0, "", "")
+    )
+    monkeypatch.setattr(hooks, "_style", _StyleBoom())
+    assert hooks.ensure_provisioned() is None
+    assert _hook_run_setup_count(calls) == 1, calls
+
+
+def test_ensure_provisioned_swallows_unprintable_exception(hooks, monkeypatch):
+    """An exception whose __str__ raises must not escape through the boot
+    path's own warning construction."""
+    def _raise_evil(argv, **kwargs):
+        raise _EvilStr()
+
+    monkeypatch.setattr(hooks.subprocess, "run", _raise_evil)
+    monkeypatch.setattr(hooks, "_style", _Rec())
+    assert hooks.ensure_provisioned() is None
+
+
+def test_ensure_provisioned_never_raises_on_comparison_fault(hooks, monkeypatch):
+    """A fault in the version comparison must reach the outer never-raise
+    guard and degrade to a warning."""
+    rec = _install_style(hooks, monkeypatch)
+    monkeypatch.setattr(hooks, "_installed_version", lambda: _EvilEq("9.9.9"))
+    monkeypatch.setattr(hooks, "_pin_version", lambda: _EvilPin("1.0.1"))
+    assert hooks.ensure_provisioned() is None
+    assert any("degraded" in t for t in rec.texts), rec.texts
+
+
+@pytest.mark.parametrize("roe", [True, False])
+def test_ensure_provisioned_tolerates_raise_on_error_kwarg(hooks, monkeypatch, roe):
+    """safe_call passes raise_on_error only to hooks that declare it; the
+    framework always calls with NO args, so the signature must accept the
+    kwarg AND tolerate its absence - and never raise either way."""
+    calls = _patch_version_then_setup(
+        hooks, monkeypatch, probe=_probe_result("rtk 9.9.9"), setup=_Result(0, "", "")
+    )
+    monkeypatch.setattr(hooks, "_style", _Rec())
+    assert hooks.ensure_provisioned(raise_on_error=roe) is None
+    assert _hook_run_setup_count(calls) == 1, calls
+
+
+def test_ensure_provisioned_returns_none_not_bool(hooks, monkeypatch):
+    """The hook is a warning-not-raising entrypoint (like install/pre_update):
+    it returns None; success is observable through logs, not a return code."""
+    calls = _patch_version_then_setup(
+        hooks, monkeypatch, probe=_probe_result("rtk 1.0.1"), setup=_Result(0, "", "")
+    )
+    monkeypatch.setattr(hooks, "_style", _Rec())
+    assert hooks.ensure_provisioned() is None
+
+
+def test_ensure_provisioned_outer_guard_pins_shared_helper_fault(hooks, monkeypatch):
+    """Non-vacuous outer-guard pin: when the shared drift-check itself raises
+    (a fault class the inner handlers do not cover), the boot entrypoint's
+    own outer guard must degrade to a warning and return None - never raise.
+    Removing the outer try/except must redden this test."""
+    rec = _install_style(hooks, monkeypatch)
+
+    def _boom(context):
+        raise RuntimeError("shared helper exploded")
+
+    monkeypatch.setattr(hooks, "_ensure_pinned_rtk", _boom)
+    assert hooks.ensure_provisioned() is None
+    assert any("degraded" in t for t in rec.texts), rec.texts
+    assert hooks.ensure_provisioned(raise_on_error=True) is None
+    assert any("degraded" in t for t in rec.texts), rec.texts

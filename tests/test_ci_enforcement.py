@@ -16,9 +16,16 @@ RULE_IDS = {
     "no-hardcoded-pin-in-shell",
 }
 # Production source only: fixtures/docs legitimately quote the version shape.
+# The user-triggered gain surface family ships new production paths — command
+# handler, api endpoint, and the self-contained page — so the live ast-grep
+# gate covers them too. rc=0 verified scoped over this full set at PR prep time.
 PROD_TARGETS = [
     "scripts/setup.sh", "hooks.py", "plugin.yaml",
     "extensions/python/tool_execute_before/_10_rtk_intercept.py",
+    "extensions/python/startup_migration/_10_rtk_bootstrap.py",
+    "commands/rtk-gain.command.yaml", "commands/rtk_gain_command.py",
+    "api/rtk_gain.py", "api/__init__.py",
+    "webui/main.html",
 ]
 
 
@@ -140,3 +147,37 @@ def test_ast_grep_live_scan_when_binary_present():
         import pytest
         pytest.skip("ast-grep live scan timed out - pure YAML contract pins the rule")
     assert proc.returncode == 0, f"ast-grep CI rule violations: {proc.stdout}{proc.stderr}"
+
+
+def test_prod_targets_matches_the_real_production_file_set():
+    """review pin: PROD_TARGETS lists exactly the production source
+
+    files on disk (each listed path exists; no deleted/badge path lingers;
+    every real production code file is listed). Without this pin the list
+    was only consumed by the ast-grep-gated live scan, so deleted-path
+    drift shipped undetected on hosts without ast-grep.
+    """
+    for rel in PROD_TARGETS:
+        assert (ROOT / rel).is_file(), f"PROD_TARGETS entry missing on disk: {rel}"
+    banned = ("rtk-gain-badge-store.js", "_10_rtk_gain_badge.html", "rtk-gain-store.js")
+    for rel in PROD_TARGETS:
+        for marker in banned:
+            assert marker not in rel, f"deleted badge/page-store path must not be listed: {rel}"
+    # Suffix set must cover every production kind actually shipped: the page
+    # asset (webui/main.html) is a code-bearing file like the others.
+    real = {
+        str(p.relative_to(ROOT))
+        for p in ROOT.rglob("*")
+        if p.is_file()
+        and p.suffix in {".py", ".sh", ".yaml", ".html"}
+        and "__pycache__" not in p.parts
+        and ".venv" not in p.parts
+        and ".git" not in p.parts
+        and not any(part.startswith(".") for part in p.relative_to(ROOT).parts[:-1])
+        and "graphify-out" not in p.parts
+    }
+    real -= {"tests/" + f.name for f in (ROOT / "tests").glob("test_*.py")}
+    assert set(PROD_TARGETS) == real, (
+        f"PROD_TARGETS must equal the real production file set; "
+        f"missing={sorted(real - set(PROD_TARGETS))}, stale={sorted(set(PROD_TARGETS) - real)}"
+    )
