@@ -37,7 +37,7 @@ def test_pin_file():
     pin_path = PLUGIN_ROOT / "rtk_pin.txt"
     assert pin_path.exists(), "rtk_pin.txt missing"
     content = pin_path.read_text().strip()
-    assert content == "v1.0.1", f"pin content mismatch: '{content}'"
+    assert content == "v1.1.0", f"pin content mismatch: '{content}'"
     # Ensure single line, no extra bytes
     lines = pin_path.read_text().splitlines()
     assert len(lines) == 1, "pin file must be single line"
