@@ -23,7 +23,7 @@ def test_manifest_pinned_fields():
     assert re.match(r'^[a-z0-9_]+$', data["name"]), "name must match ^[a-z0-9_]+$"
     assert "title" in data and data["title"], "title missing"
     assert "description" in data and data["description"], "description missing"
-    assert data["version"] == "1.0.0", f"version mismatch: {data.get('version')}"
+    assert data["version"] == "1.1.0", f"version mismatch: {data.get('version')}"
     # supersedes the off-by-default assumption: requires
     # zero-config default-on once setup auto-provisions the binary (hooks.install
     # runs scripts/setup.sh on plugin install —).
@@ -33,7 +33,7 @@ def test_manifest_pinned_fields():
 
 
 def test_pin_file():
-    """rtk_pin.txt contains exactly v1.0.1."""
+    """rtk_pin.txt contains exactly v1.1.0."""
     pin_path = PLUGIN_ROOT / "rtk_pin.txt"
     assert pin_path.exists(), "rtk_pin.txt missing"
     content = pin_path.read_text().strip()
