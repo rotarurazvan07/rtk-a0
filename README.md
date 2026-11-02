@@ -31,21 +31,11 @@ Rewritten commands still pass through Agent Zero's normal permission layer. The 
 
 ## Check that it's working
 
-Ask the agent to run:
-
-```
-rtk gain
-```
+Run the /rtk-gain commands into any chat or open the model from plugins page.
 
 This shows RTK's own savings ledger: total tokens saved and a per-command breakdown.
 
 Savings depend on the command. Output-heavy commands compress well; tiny outputs can even grow slightly.
-
-### Example
-
-| Command | Before | After | Reduction |
-| --- | --- | --- | --- |
-| `git status` | 476 B | 125 B | 73.7% |
 
 ## Usage
 
