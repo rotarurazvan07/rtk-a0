@@ -29,33 +29,9 @@ git clone https://github.com/rotarurazvan07/rtk-a0.git usr/plugins/rtk_compressi
 
 Rewritten commands still pass through Agent Zero's normal permission layer. The plugin never bypasses approvals.
 
-## Check that it's working
+## Savings page — RTK's totals on demand
 
-Ask the agent to run:
-
-```
-rtk gain
-```
-
-This shows RTK's own savings ledger: total tokens saved and a per-command breakdown.
-
-Savings depend on the command. Output-heavy commands compress well; tiny outputs can even grow slightly.
-
-### Example
-
-| Command | Before | After | Reduction |
-| --- | --- | --- | --- |
-| `git status` | 476 B | 125 B | 73.7% |
-
-## Usage
-
-No configuration needed. A few useful things to know:
-
-- Commands you prefix with `rtk` yourself (`rtk gain`, `rtk --version`) pass through untouched.
-
-### Savings page — RTK's totals on demand
-
-Run **`rtk-gain`** from the command palette to open a read-only savings
+Run **`/rtk-gain`** from the command palette to open a read-only savings
 page. It fetches RTK's own accounting **once, when the page opens**, and
 shows the totals **as RTK formats them** — tokens saved and the savings
 percentage come from RTK's ledger; this plugin never recomputes or re-rounds
@@ -72,6 +48,10 @@ error page, and the agent keeps working either way.
 ```
   rtk bypass ls -la
 ```
+
+Example:
+
+![](./docs/images/rtk-gain.png)
 
 ## Fail-open guarantee
 
