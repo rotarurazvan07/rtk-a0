@@ -664,7 +664,7 @@ def test_closed_page_issues_no_requests_outside_open():
     # the page SHELL (outside the inlined <script>) carries no request code;
     # the inlined store's single fetch is confined to onOpen (checked below)
     html = MAIN_HTML.read_text(encoding="utf-8")
-    shell = re.sub(r"<script\b[^>]*>[\s\S]*?</script\s*>", "", html, flags=re.IGNORECASE)
+    shell = re.sub(r"<script\b[^>]*>[\s\S]*?</script[^>]*>", "", html, flags=re.IGNORECASE)
     assert "fetch(" not in shell, "page shell must carry no request code of its own"
     js = _store_source(MAIN_HTML)
     for primitive in ("XMLHttpRequest", "sendBeacon", "EventSource", "WebSocket"):
@@ -684,12 +684,16 @@ def test_shell_scrub_strips_script_blocks_with_irregular_close_tags():
         '<div><SCRIPT>var x=1;fetch("y")</SCRIPT ></div>',
         '<div><script TYPE="text/javascript">fetch("a")</script\t></div>',
         '<div><ScRiPt>fetch("b")</sCrIpT   ></div>',
+        # CodeQL alert annotation names close tags bearing whitespace AND
+        # attributes: '</script\t\n bar>' must be matched, not only whitespace
+        '<div><script>fetch("c")</script\t\n bar></div>',
+        '<div><SCRIPT SRC="x">fetch("d")</SCRIPT FOO="bar"></div>',
     ]
     # this pin deliberately repeats the production expression verbatim: a
     # drift between the pattern here and the one in
     # test_closed_page_issues_no_requests_outside_open reddens the pin
     for variant in variants:
-        shell = re.sub(r"<script\b[^>]*>[\s\S]*?</script\s*>", "", variant, flags=re.IGNORECASE)
+        shell = re.sub(r"<script\b[^>]*>[\s\S]*?</script[^>]*>", "", variant, flags=re.IGNORECASE)
         assert shell == "<div></div>", (
             f"scrub must remove the whole block for {variant!r}: left {shell!r}"
         )
