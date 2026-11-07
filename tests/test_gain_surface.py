@@ -381,7 +381,7 @@ def test_store_unrelated_state_change_triggers_no_events():
 def _inline_store_js() -> str:
     """The inlined store: the single classic <script> block inside main.html."""
     html = MAIN_HTML.read_text(encoding="utf-8")
-    match = re.search(r"<script>([\s\S]*?)</script>", html)
+    match = re.search(r"<script>([\s\S]*?)</script>", html, re.IGNORECASE)
     assert match, "page must inline the store as one classic <script> block"
     return match.group(1)
 
@@ -390,7 +390,7 @@ _DERIVATION_HARNESS_JS = r"""
 const fs = require('fs');
 const vm = require('vm');
 const html = fs.readFileSync(process.argv[2], 'utf8');
-const match = /<script>([\s\S]*?)<\/script>/.exec(html);
+const match = /<script>([\s\S]*?)<\/script>/i.exec(html);
 if (!match) { console.log(JSON.stringify({ error: 'no inline script block' })); process.exit(0); }
 const sandbox = { console, window: {} };
 sandbox.globalThis = sandbox;
@@ -458,8 +458,8 @@ def test_endpoint_derivation_absent_modal_resolves_without_fetch_target():
 def test_page_carries_no_external_script_or_style_asset_request():
     """exactly one HTTP request per open - no child-asset request class."""
     html = MAIN_HTML.read_text(encoding="utf-8")
-    assert not re.search(r"<script[^>]+src=", html), "inline store only: no external script tag"
-    assert not re.search(r"<link[^>]+href=", html), "no external style asset request"
+    assert not re.search(r"<script[^>]+src=", html, re.IGNORECASE), "inline store only: no external script tag"
+    assert not re.search(r"<link[^>]+href=", html, re.IGNORECASE), "no external style asset request"
 
 
 # ---------------------------------------------------------------------------
@@ -664,7 +664,7 @@ def test_closed_page_issues_no_requests_outside_open():
     # the page SHELL (outside the inlined <script>) carries no request code;
     # the inlined store's single fetch is confined to onOpen (checked below)
     html = MAIN_HTML.read_text(encoding="utf-8")
-    shell = re.sub(r"<script\b[^>]*>[\s\S]*?</script>", "", html)
+    shell = re.sub(r"<script\b[^>]*>[\s\S]*?</script>", "", html, flags=re.IGNORECASE)
     assert "fetch(" not in shell, "page shell must carry no request code of its own"
     js = _store_source(MAIN_HTML)
     for primitive in ("XMLHttpRequest", "sendBeacon", "EventSource", "WebSocket"):
@@ -1325,10 +1325,10 @@ def test_no_publishable_file_references_the_badge_surface():
 def test_page_is_self_contained_no_external_assets():
     """The one shipped surface is the page itself: one inline script, no assets."""
     html = MAIN_HTML.read_text(encoding="utf-8")
-    scripts = re.findall(r"<script\b[^>]*>", html)
+    scripts = re.findall(r"<script\b[^>]*>", html, re.IGNORECASE)
     assert len(scripts) == 1, f"exactly one script block expected, got {scripts}"
     assert "src=" not in scripts[0], "the inlined script must not fetch an external file"
-    assert not re.search(r"<link\b", html), "no external stylesheet asset"
+    assert not re.search(r"<link\b", html, re.IGNORECASE), "no external stylesheet asset"
 
 
 # ---------------------------------------------------------------------------
@@ -1376,10 +1376,10 @@ def test_endpoint_construction_lives_only_in_the_derivation_helper():
 def test_page_ships_exactly_one_script_block_and_no_external_assets():
     """The page is self-contained: one inline script tag, zero external assets."""
     html = MAIN_HTML.read_text(encoding="utf-8")
-    script_tags = re.findall(r"<script\b[^>]*>", html)
+    script_tags = re.findall(r"<script\b[^>]*>", html, re.IGNORECASE)
     assert len(script_tags) == 1, f"exactly one script block expected, got {script_tags}"
     assert "src=" not in script_tags[0], "the script block must be inline"
-    assert not re.search(r"<link\b", html), "no external stylesheet asset"
+    assert not re.search(r"<link\b", html, re.IGNORECASE), "no external stylesheet asset"
     assert "onOpen($el)" in html, "page must wire the store with its own element"
 
 
