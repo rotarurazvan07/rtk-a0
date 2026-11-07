@@ -664,7 +664,7 @@ def test_closed_page_issues_no_requests_outside_open():
     # the page SHELL (outside the inlined <script>) carries no request code;
     # the inlined store's single fetch is confined to onOpen (checked below)
     html = MAIN_HTML.read_text(encoding="utf-8")
-    shell = re.sub(r"<script\b[^>]*>[\s\S]*?</script>", "", html, flags=re.IGNORECASE)
+    shell = re.sub(r"<script\b[^>]*>[\s\S]*?</script\s*>", "", html, flags=re.IGNORECASE)
     assert "fetch(" not in shell, "page shell must carry no request code of its own"
     js = _store_source(MAIN_HTML)
     for primitive in ("XMLHttpRequest", "sendBeacon", "EventSource", "WebSocket"):
@@ -672,6 +672,28 @@ def test_closed_page_issues_no_requests_outside_open():
     onopen_span = _open_handler_span(js)
     outside = js.replace(onopen_span, "")
     assert "fetch(" not in outside, "request primitive outside the open handler span"
+
+
+def test_shell_scrub_strips_script_blocks_with_irregular_close_tags():
+    """CodeQL alert #5 pin: the scrub must remove script blocks whose close tag
+    carries trailing whitespace (</script >) or uppercase forms; a rigid
+    </script> close leaks the block into the shell scan and evades the
+    zero-external-asset proof for those variants.
+    """
+    variants = [
+        '<div><SCRIPT>var x=1;fetch("y")</SCRIPT ></div>',
+        '<div><script TYPE="text/javascript">fetch("a")</script\t></div>',
+        '<div><ScRiPt>fetch("b")</sCrIpT   ></div>',
+    ]
+    # this pin deliberately repeats the production expression verbatim: a
+    # drift between the pattern here and the one in
+    # test_closed_page_issues_no_requests_outside_open reddens the pin
+    for variant in variants:
+        shell = re.sub(r"<script\b[^>]*>[\s\S]*?</script\s*>", "", variant, flags=re.IGNORECASE)
+        assert shell == "<div></div>", (
+            f"scrub must remove the whole block for {variant!r}: left {shell!r}"
+        )
+
 
 # ===========================================================================
 # Endpoint story: read-only rtk gain endpoint (api/rtk_gain.py)
