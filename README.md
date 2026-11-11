@@ -35,7 +35,8 @@ Run **`/rtk-gain`** from the command palette to open a read-only savings
 page. It fetches RTK's own accounting **once, when the page opens**, and
 shows the totals **as RTK formats them** — tokens saved and the savings
 percentage come from RTK's ledger; this plugin never recomputes or re-rounds
-them. While the page is closed there is **no background polling and no network
+them. The page also prints the installed RTK version, queried live when the
+page opens and shown only when the binary answers. While the page is closed there is **no background polling and no network
 traffic**, and the plugin persists nothing.
 
 When RTK's ledger is empty (fresh install, no tracked commands yet) the page
