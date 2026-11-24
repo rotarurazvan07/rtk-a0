@@ -22,6 +22,7 @@
         <div class="rtk-term">
           <template x-for="(line, i) in $store.rtkGain.term()" :key="i"><div><template x-for="(seg, j) in line" :key="j"><span :class="seg.c" x-text="seg.t"></span></template></div></template>
         </div>
+        <div class="rtk-term-ver" x-show="$store.rtkGain.version" x-text="$store.rtkGain.version"></div>
       </template>
 
       <template x-if="!$store.rtkGain.term()">
@@ -52,6 +53,10 @@
     .rtk-term .t-meter   { color: #16c60c; }
     .rtk-term .t-impact  { color: #61d6d6; }
     .rtk-term .t-dim     { opacity: .3; }
+    .rtk-term-ver {
+      margin-top: 6px; color: #8a8a8a; font-size: 12px;
+      font-family: "Cascadia Mono", "JetBrains Mono", Consolas, "DejaVu Sans Mono", monospace;
+    }
     .rtk-gain-notice { padding: 1rem; color: #aaa; }
   </style>
 
@@ -96,6 +101,7 @@ var createRtkGainStore = () => ({
   status: "idle", // idle | loading | ready | error
   notice: "", // friendly copy for the ready-but-nothing-to-show states
   terminal: "", // verbatim `rtk gain` text from the endpoint
+  version: "", // live `rtk --version` string from the endpoint (rendered when non-empty)
   error: "", // network-level failure text (error state, not a notice)
   view: { view: "loading" }, // render projection for the page
   events: [], // bounded lifecycle log
@@ -155,6 +161,8 @@ var createRtkGainStore = () => ({
     if (this.status !== "loading") return;
     if (data && data.ok === true && data.terminal) {
       this.terminal = String(data.terminal);
+      // server-probed version: guard the type, trim, absent/non-string -> ""
+      this.version = typeof data.rtk_version === "string" ? data.rtk_version.trim() : "";
       this.notice = "";
       this.status = "ready";
       this._emit("status", "loading", "ready");
@@ -239,6 +247,7 @@ var createRtkGainStore = () => ({
     this.status = "idle";
     this.notice = "";
     this.terminal = "";
+    this.version = "";
     this.error = "";
     this.view = { view: "loading" };
     this.events = [];

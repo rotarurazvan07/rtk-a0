@@ -274,6 +274,22 @@ if (scenario === 'transition-ready') {
   store.status = 'loading';
   const r = store.handle(payload);
   out({ result: r, terminal: store.terminal, notice: store.notice, view: store.view });
+} else if (scenario === 'open-renders-version') {
+  sandbox.__nextResponse = { ok: true, json: async () => ({ ok: true, rtk_available: true, message: 'Tokens saved: 225.2K (30.9%)', error: '', terminal: 'RTK Token Savings\\n', rtk_version: 'rtk 1.1.0' }) };
+  await store.onOpen(fakeEl);
+  out({ version: store.version, status: store.status, terminal: store.terminal });
+} else if (scenario === 'version-payload') {
+  // pure handle() projection: absent key, empty string, non-string shapes
+  const payload = JSON.parse(process.argv[4]);
+  store.status = 'loading';
+  store.handle(payload);
+  out({ version: store.version, status: store.status });
+} else if (scenario === 'cleanup-resets-version') {
+  sandbox.__nextResponse = { ok: true, json: async () => ({ ok: true, rtk_available: true, message: 'x', error: '', terminal: 'RTK Token Savings\\n', rtk_version: 'rtk 1.1.0' }) };
+  await store.onOpen(fakeEl);
+  const afterOpen = store.version;
+  store.cleanup();
+  out({ afterOpen, afterCleanup: store.version, status: store.status });
 } else if (scenario === 'events-unbounded-within-mount') {
   // : growth WITHOUT cleanup must hit the 64-entry bound (the
   // old scenario reset events on every iteration and could never fail)
@@ -331,6 +347,26 @@ def _run_store_scenario(scenario: str) -> dict:
         harness.write_text(_HARNESS_JS, encoding="utf-8")
         proc = subprocess.run(
             [node, str(harness), str(store_src), scenario],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    assert proc.returncode == 0, f"node harness failed: {proc.stderr}"
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def _run_store_scenario_with_args(scenario: str, payload: str) -> dict:
+    """Drive a harness scenario that consumes a JSON argv payload (argv[4])."""
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node runtime not available for store behavioral harness")
+    with tempfile.TemporaryDirectory() as tmp:
+        harness = Path(tmp) / "harness.js"
+        store_src = Path(tmp) / "store.js"
+        store_src.write_text(_inline_store_js(), encoding="utf-8")
+        harness.write_text(_HARNESS_JS, encoding="utf-8")
+        proc = subprocess.run(
+            [node, str(harness), str(store_src), scenario, payload],
             capture_output=True,
             text=True,
             timeout=30,
@@ -821,8 +857,13 @@ def test_red_handler_class_exists_with_auth_and_post_only():
 def test_red_invocation_argv_is_exact_and_flag_safe():
     module = _load_api_handler()
     result, calls = _invoke(module, [])
-    assert len(calls) == 1, f"exactly one invocation expected, got {len(calls)}"
-    argv = calls[0]["cmd"]
+    # the response now carries the probed version: the request spawns the
+    # bounded version probe plus the gain call. Select the gain invocation.
+    gain_calls = [c for c in calls if c["cmd"] and "gain" in c["cmd"]]
+    probe_calls = [c for c in calls if c["cmd"] and c["cmd"][:2] == ["rtk", "--version"]]
+    assert len(probe_calls) == 1, f"one bounded version probe per request: {calls!r}"
+    assert len(gain_calls) == 1, f"exactly one gain invocation expected, got {len(gain_calls)}"
+    argv = gain_calls[0]["cmd"]
     assert isinstance(argv, list), "invocation must be argv-list, not a shell string"
     assert argv == ["rtk", "gain", "--text"], f"argv mismatch: {argv!r}"
     tokens = _tokens(argv)
@@ -855,7 +896,7 @@ def test_red_fail_state_is_structured_on_nonzero_rc():
     assert result.get("error"), "fail state must carry a user-facing reason"
 
 
-def test_terminal_stdout_ships_verbatim_with_one_invocation():
+def test_terminal_stdout_ships_verbatim_with_one_gain_invocation_plus_probe():
     """plain terminal stdout ships ANSI-stripped and verbatim as `terminal`
     (one rtk invocation per request, no parsing)."""
     module = _load_api_handler()
@@ -866,7 +907,11 @@ def test_terminal_stdout_ships_verbatim_with_one_invocation():
     assert "RTK Token Savings" in result["terminal"], f"verbatim text: {result!r}"
     assert result.get("message") == "RTK Token Savings", f"message is the first line: {result!r}"
     assert result.get("error") == "", "success carries no error"
-    assert len(calls) == 1, f"exactly one rtk invocation per request: {calls!r}"
+    gain_calls = [c for c in calls if c["cmd"] and "gain" in c["cmd"]]
+    probe_calls = [c for c in calls if c["cmd"] and c["cmd"][:2] == ["rtk", "--version"]]
+    assert len(gain_calls) == 1 and len(probe_calls) == 1, (
+        f"exactly one gain invocation plus one bounded probe per request: {calls!r}"
+    )
 
 
 def test_terminal_verbatim_no_json_parse_required():
@@ -968,7 +1013,9 @@ def test_stderr_only_noise_is_a_fail_state():
 def test_flag_safety_never_passes_mutating_or_interactive_flags():
     module = _load_api_handler()
     _, calls = _invoke(module, [])
-    tokens = _tokens(calls[0]["cmd"])
+    gain_calls = [c for c in calls if c["cmd"] and "gain" in c["cmd"]]
+    assert len(gain_calls) == 1, f"one gain invocation expected: {calls!r}"
+    tokens = _tokens(gain_calls[0]["cmd"])
     assert "--text" in tokens, "--text is mandatory (bare rtk gain can auto-launch --watch)"
     for forbidden in ("--reset", "--yes", "--watch"):
         assert forbidden not in tokens, f"forbidden flag {forbidden} must never be passed"
@@ -1532,3 +1579,197 @@ def test_inlined_page_store_loads_with_alpine_absent():
     assert proc.returncode == 0, f"harness failed: {proc.stderr}"
     report = json.loads(proc.stdout.strip().splitlines()[-1])
     assert report.get("loaded") is True, f"inline store must load with Alpine absent: {report}"
+
+
+# ---------------------------------------------------------------------------
+# Endpoint version probe: the response carries the live `rtk --version` string
+# Server-side probe only: the page gains a field, never a second request.
+# ---------------------------------------------------------------------------
+
+
+def _invoke_with_version(module, *, probe_stdout="rtk 1.1.0\n", probe_rc=0,
+                         probe_exc=None, gain_stdout=_LIVE_JSON,
+                         gain_rc=0, gain_exc=None, which="/stub/rtk"):
+    """Sequential stub: the first subprocess call is the version probe, the
+    second is the gain call; returns (result, calls)."""
+    calls = []
+
+    class _Completed:
+        def __init__(self, stdout, rc):
+            self.returncode = rc
+            self.stdout = stdout if isinstance(stdout, str) else stdout.decode("utf-8", "replace")
+            self.stderr = ""
+
+    def _fake_run(cmd, *args, **kwargs):
+        calls.append({"cmd": cmd, "args": args, "kwargs": kwargs})
+        # key the stub on the command itself (probe first, gain second) so a
+        # future reorder or a third spawn fails loudly instead of feeding the
+        # probe's stdout to the gain call
+        if cmd[:2] == ["rtk", "--version"]:
+            if probe_exc is not None:
+                raise probe_exc
+            return _Completed(probe_stdout, probe_rc)
+        if gain_exc is not None:
+            raise gain_exc
+        return _Completed(gain_stdout, gain_rc)
+
+    saved_run = module.subprocess.run
+    saved_which = module.shutil.which
+    module.subprocess.run = _fake_run
+    module.shutil.which = lambda name: which
+    try:
+        handler = module.RtkGain(app=None, thread_lock=None)
+        result = asyncio.run(handler.process({}, None))
+    finally:
+        module.subprocess.run = saved_run
+        module.shutil.which = saved_which
+    return result, calls
+
+
+def test_version_probe_populates_rtk_version_on_ok():
+    """the ok body carries the probed version string verbatim (stripped)."""
+    module = _load_api_handler()
+    result, calls = _invoke_with_version(module, probe_stdout="rtk 1.1.0\n")
+    assert result.get("ok") is True, f"gain happy path must stay ok: {result!r}"
+    assert result.get("rtk_version") == "rtk 1.1.0", f"probed version must ship: {result!r}"
+    probe_calls = [c for c in calls if c["cmd"] and c["cmd"][:2] == ["rtk", "--version"]]
+    assert len(probe_calls) == 1, f"exactly one bounded probe per request: {calls!r}"
+
+
+def test_version_key_present_in_both_ok_and_fail_bodies():
+    """key parity: the version key exists in the ok and the fail builders alike."""
+    module = _load_api_handler()
+    ok_keys = set(module.RtkGain._ok("RTK Token Savings\n"))
+    fail_keys = set(module.RtkGain._fail("rtk-missing", "absent"))
+    assert ok_keys == fail_keys, f"ok/fail key sets must match: {ok_keys} vs {fail_keys}"
+    assert "rtk_version" in fail_keys, f"fail body must carry the version key: {fail_keys}"
+
+
+def test_version_probe_fault_degrades_to_empty_and_keeps_gain_result():
+    """probe raise / timeout / non-zero rc all degrade to '' and never touch the gain result."""
+    module = _load_api_handler()
+    cases = {
+        "raise": dict(probe_exc=OSError("probe boom")),
+        "timeout": dict(probe_exc=subprocess.TimeoutExpired(cmd="rtk", timeout=2.0)),
+        "nonzero-rc": dict(probe_rc=1, probe_stdout="junk"),
+    }
+    for name, kwargs in cases.items():
+        result, _ = _invoke_with_version(module, **kwargs)
+        assert result.get("ok") is True, f"{name}: gain result must stay ok: {result!r}"
+        assert result.get("rtk_version") == "", f"{name}: probe fault must yield empty: {result!r}"
+        assert "RTK Token Savings" in result.get("terminal", ""), f"{name}: gain text intact: {result!r}"
+
+
+def test_version_key_survives_gain_failure_states():
+    """a gain-side fail body still carries the probed version key (fail-open richness)."""
+    module = _load_api_handler()
+    result, _ = _invoke_with_version(module, gain_rc=2, gain_stdout="RTK Token Savings\n")
+    assert result.get("ok") is False, f"gain failure must stay a fail state: {result!r}"
+    assert result.get("rtk_version") == "rtk 1.1.0", f"version key survives failure: {result!r}"
+
+
+def test_version_probe_argv_is_exact_and_flag_safe():
+    """the probe argv is exactly ['rtk', '--version'] with no mutating flags."""
+    module = _load_api_handler()
+    _, calls = _invoke_with_version(module)
+    probe_calls = [c for c in calls if c["cmd"] and c["cmd"][:2] == ["rtk", "--version"]]
+    assert len(probe_calls) == 1, f"one probe call expected: {calls!r}"
+    argv = probe_calls[0]["cmd"]
+    assert isinstance(argv, list), "probe invocation must be argv-list"
+    assert argv == ["rtk", "--version"], f"probe argv mismatch: {argv!r}"
+    tokens = _tokens(argv)
+    for forbidden in ("--reset", "--yes", "--watch", "--format"):
+        assert forbidden not in tokens, f"forbidden flag {forbidden!r} in probe argv"
+    kwargs = probe_calls[0]["kwargs"]
+    assert kwargs.get("capture_output") is True, "probe must capture stdout only"
+    assert kwargs.get("encoding") == "utf-8" and kwargs.get("errors") == "replace", "probe decode shape"
+    assert isinstance(kwargs.get("timeout"), (int, float)), "probe must carry a timeout bound"
+
+
+def test_version_probe_timeout_is_a_single_source_constant():
+    """the probe timeout is a module constant, never an inline literal."""
+    module = _load_api_handler()
+    assert hasattr(module, "RTK_VERSION_TIMEOUT"), "probe timeout must be a single-source constant"
+    _, calls = _invoke_with_version(module)
+    probe_calls = [c for c in calls if c["cmd"] and c["cmd"][:2] == ["rtk", "--version"]]
+    assert probe_calls[0]["kwargs"].get("timeout") == module.RTK_VERSION_TIMEOUT, (
+        "probe must use the module constant, not an inline value"
+    )
+
+
+def test_absent_binary_still_carries_the_version_key():
+    """absent binary: no spawn at all, yet the response still carries the key."""
+    module = _load_api_handler()
+    calls = []
+    saved_run = module.subprocess.run
+    module.subprocess.run = lambda *a, **k: calls.append(a) or (_ for _ in ()).throw(AssertionError("no spawn allowed"))
+    saved_which = module.shutil.which
+    module.shutil.which = lambda name: None
+    try:
+        handler = module.RtkGain(app=None, thread_lock=None)
+        result = asyncio.run(handler.process({}, None))
+    finally:
+        module.subprocess.run = saved_run
+        module.shutil.which = saved_which
+    assert result.get("ok") is False and result.get("rtk_available") is False, f"absent binary: {result!r}"
+    assert "rtk_version" in result, f"absent-binary body must still carry the key: {result!r}"
+    assert result.get("rtk_version") == "", f"absent binary probes nothing: {result!r}"
+    assert not calls, f"no subprocess may run when rtk is absent: {calls}"
+
+
+# ---------------------------------------------------------------------------
+# page version line: render the probed version only when it is non-empty
+# ---------------------------------------------------------------------------
+
+
+def test_store_renders_probed_version_verbatim():
+    """an ok payload carrying the probed version renders it verbatim in the store."""
+    report = _run_store_scenario("open-renders-version")
+    assert "error" not in report, f"harness error: {report}"
+    assert report.get("version") == "rtk 1.1.0", f"version must render verbatim: {report}"
+    assert report.get("status") == "ready", f"terminal path unaffected: {report}"
+    assert report.get("terminal"), f"terminal text intact: {report}"
+
+
+def test_store_version_empty_when_key_absent_or_not_a_string():
+    """absent key, empty string, and non-string shapes all render no version."""
+    for payload in (
+        '{"ok": true, "terminal": "RTK Token Savings\\n"}',
+        '{"ok": true, "terminal": "RTK Token Savings\\n", "rtk_version": ""}',
+        '{"ok": true, "terminal": "RTK Token Savings\\n", "rtk_version": 12}',
+        '{"ok": true, "terminal": "RTK Token Savings\\n", "rtk_version": null}',
+    ):
+        report = _run_store_scenario_with_args("version-payload", payload)
+        assert "error" not in report, f"harness error: {report}"
+        assert report.get("version") == "", f"non-string/absent must render no version: {payload} -> {report}"
+
+
+def test_store_cleanup_resets_the_version_field():
+    """teardown clears the version so a fresh mount renders no stale line."""
+    report = _run_store_scenario("cleanup-resets-version")
+    assert "error" not in report, f"harness error: {report}"
+    assert report.get("afterOpen") == "rtk 1.1.0", f"version rendered while open: {report}"
+    assert report.get("afterCleanup") == "", f"cleanup must reset the version: {report}"
+    assert report.get("status") == "idle", f"cleanup returns to idle: {report}"
+
+
+def test_page_version_line_is_gated_on_non_empty_string():
+    """the version line renders only when the string is non-empty (never an empty line)."""
+    html = MAIN_HTML.read_text(encoding="utf-8")
+    assert 'x-show="$store.rtkGain.version"' in html, "version line must be gated on a non-empty string"
+    assert 'x-text="$store.rtkGain.version"' in html, "version line must render the probed string"
+    assert "rtk-term-ver" in html, "version line must carry its own class"
+    assert ".rtk-term-ver" in html, "version line style rule must exist"
+    js = _inline_store_js()
+    assert 'version: ""' in js, "store must declare the version field"
+    assert "typeof data.rtk_version" in js, "store must guard the version type before rendering"
+    assert "rtk_version" in js, "store must consume the endpoint version key"
+
+
+def test_page_adds_no_new_request_surface_for_the_version():
+    """the version probe is server-side: the page adds no fetch/timer/watcher for it."""
+    js = _inline_store_js()
+    opens = [m.start() for m in re.finditer(r"fetch\(", js)]
+    assert len(opens) == 1, f"exactly one fetch in the page store: {opens}"
+    for needle in ("setInterval", "setTimeout", "$watch", "requestAnimationFrame"):
+        assert needle not in js, f"version feature must not add {needle!r}"
